@@ -72,6 +72,9 @@ platform_check_image() {
 
 platform_do_upgrade() {
 	case "$(board_name)" in
+	glinet,gl-b3000)
+		nand_do_upgrade "$1"
+		;;
 	linksys,mx2000|\
 	linksys,mx5500)
 		remove_oem_ubi_volume rootfs
