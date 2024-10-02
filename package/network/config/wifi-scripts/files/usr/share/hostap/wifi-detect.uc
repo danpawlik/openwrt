@@ -161,7 +161,7 @@ function wiphy_detect() {
 			    (he_phy_cap & 0x18) || ((band.vht_capa >> 2) & 0x3))
 				band_info.max_width = 160;
 			else if (band_name != "2G" &&
-			         (he_phy_cap & 4) || band.vht_capa > 0)
+				(he_phy_cap & 4) || band.vht_capa > 0)
 				band_info.max_width = 80;
 			else if ((band.ht_capa & 0x2) || (he_phy_cap & 0x2))
 				band_info.max_width = 40;
