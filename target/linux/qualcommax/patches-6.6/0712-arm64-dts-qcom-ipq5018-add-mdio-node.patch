@@ -3,7 +3,7 @@ From: Ziyang Huang <hzyitc@outlook.com>
 Date: Sun, 8 Sep 2024 16:40:12 +0800
 Subject: [PATCH 2/3] arm64: dts: qcom: ipq5018: add mdio node
 
-The IPQ5018 SoC contains two MDIO controllers. MDIO0 is used to control 
+The IPQ5018 SoC contains two MDIO controllers. MDIO0 is used to control
 its internal GE Phy, while MDIO1 is wired to external PHYs/switch.
 
 Signed-off-by: Ziyang Huang <hzyitc@outlook.com>
