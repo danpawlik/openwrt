@@ -60,7 +60,7 @@
 	status = "okay";
 };
 
-/* IPQ5018 GE Phy -> Not connected 
+/* IPQ5018 GE Phy -> Not connected
  * needs to be enabled for QSDK to identify the IPQ5018 dummy switch
  */
 &ge_phy {
