@@ -1030,6 +1030,9 @@ mac80211_setup_vif() {
 
 	json_select ..
 	[ -n "$failed" ] || wireless_add_vif "$name" "$ifname"
+
+	echo "Setup SMP Affinity"
+	/sbin/smp-mt76.sh
 }
 
 get_freq() {
