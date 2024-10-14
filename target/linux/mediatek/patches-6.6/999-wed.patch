@@ -50,6 +50,11 @@
  	default:
  		return -EINVAL;
  	}
+@@ -471,3 +476,4 @@ MODULE_FIRMWARE(MT7986_FIRMWARE_WO0);
+ MODULE_FIRMWARE(MT7986_FIRMWARE_WO1);
+ MODULE_FIRMWARE(MT7988_FIRMWARE_WO0);
+ MODULE_FIRMWARE(MT7988_FIRMWARE_WO1);
++MODULE_FIRMWARE(MT7988_FIRMWARE_WO2);
 --- a/drivers/net/ethernet/mediatek/mtk_wed_wo.h
 +++ b/drivers/net/ethernet/mediatek/mtk_wed_wo.h
 @@ -93,6 +93,7 @@ enum mtk_wed_dummy_cr_idx {
