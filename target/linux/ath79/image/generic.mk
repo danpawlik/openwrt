@@ -1,4 +1,5 @@
 include ./common-buffalo.mk
+include ./common-nec.mk
 include ./common-netgear.mk
 include ./common-senao.mk
 include ./common-tp-link.mk
@@ -797,6 +798,17 @@ define Device/comfast_cf-e314n-v2
   IMAGE_SIZE := 7936k
 endef
 TARGET_DEVICES += comfast_cf-e314n-v2
+
+define Device/comfast_cf-e355ac-v2
+  SOC := qca9531
+  DEVICE_VENDOR := COMFAST
+  DEVICE_MODEL := CF-E355AC
+  DEVICE_VARIANT := v2
+  DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca9888-ct \
+	-swconfig -uboot-envtools
+  IMAGE_SIZE := 16192k
+endef
+TARGET_DEVICES += comfast_cf-e355ac-v2
 
 define Device/comfast_cf-e375ac
   SOC := qca9563
@@ -2059,6 +2071,36 @@ define Device/nec_wg1200cr
 	seama-seal | nec-enc 9gsiy9nzep452pad | check-size
 endef
 TARGET_DEVICES += nec_wg1200cr
+
+define Device/nec_wg1400hp
+  SOC := qca9558
+  DEVICE_MODEL := Aterm WG1400HP
+  IMAGE_SIZE := 16128k
+  NEC_FW_TYPE := H040b
+  $(Device/nec-netbsd-aterm)
+  DEVICE_PACKAGES += kmod-ath10k-ct ath10k-firmware-qca988x-ct
+endef
+TARGET_DEVICES += nec_wg1400hp
+
+define Device/nec_wg1800hp
+  SOC := qca9558
+  DEVICE_MODEL := Aterm WG1800HP
+  IMAGE_SIZE := 16128k
+  NEC_FW_TYPE := H040a
+  $(Device/nec-netbsd-aterm)
+  DEVICE_PACKAGES += kmod-ath10k-ct ath10k-firmware-qca988x-ct
+endef
+TARGET_DEVICES += nec_wg1800hp
+
+define Device/nec_wg1800hp2
+  SOC := qca9558
+  DEVICE_MODEL := Aterm WG1800HP2
+  IMAGE_SIZE := 16128k
+  NEC_FW_TYPE := H049
+  $(Device/nec-netbsd-aterm)
+  DEVICE_PACKAGES += kmod-ath10k-ct ath10k-firmware-qca988x-ct
+endef
+TARGET_DEVICES += nec_wg1800hp2
 
 define Device/nec_wg800hp
   SOC := qca9563
