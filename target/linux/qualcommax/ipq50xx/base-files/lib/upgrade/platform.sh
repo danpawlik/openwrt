@@ -77,6 +77,12 @@ platform_do_upgrade() {
 		remove_oem_ubi_volume rootfs
 		linksys_mx_do_upgrade "$1"
 		;;
+	glinet,gl-b3000)
+		REQUIRE_IMAGE_METADATA=0
+		CI_UBIPART="rootfs"
+		[ "$(find_mtd_chardev rootfs)" ] && CI_UBIPART="rootfs"
+		nand_do_upgrade "$1"
+       		;;
 	*)
 		default_do_upgrade "$1"
 		;;

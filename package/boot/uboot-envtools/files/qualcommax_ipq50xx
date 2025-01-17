@@ -14,6 +14,11 @@ linksys,mx5500)
 	[ -n "$idx" ] && \
 		ubootenv_add_uci_config "/dev/mtd$idx" "0x0" "0x40000" "0x20000"
 	;;
+glinet,gl-b3000)
+	idx="$(find_mtd_index 0:APPSBLENV)"
+	[ -n "$idx" ] && \
+		ubootenv_add_uci_config "/dev/mtd$idx" "0x0" "0x10000" "0x20000" "2"
+	;;
 esac
 
 config_load ubootenv
