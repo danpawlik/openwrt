@@ -2,6 +2,10 @@ set_preinit_iface()
 {
 	local board=$(board_name)
 	case "$board" in
+	gemtek,w1700k)
+		ip link set eth0 up
+		ifname=lan3
+		;;
 	*)
 		ip link set eth0 up
 		ifname=lan1
