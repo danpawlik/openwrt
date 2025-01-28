@@ -101,6 +101,8 @@ define Device/gemtek_w1700k-ubi
   IMAGE/sysupgrade.itb := append-kernel | fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-static-with-rootfs | append-metadata
   ARTIFACTS := chainload-uboot.itb
   ARTIFACT/chainload-uboot.itb := an7581-chainloader gemtek_w1700k
+  DEVICE_COMPAT_VERSION := 2.0
+  DEVICE_COMPAT_MESSAGE := SPI-NAND flash layout changes require bootloader update. Please run UBI installer first.
   SOC := an7581
 endef
 TARGET_DEVICES += gemtek_w1700k-ubi
