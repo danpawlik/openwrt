@@ -1,5 +1,6 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
+include glinet-image.mk
 
 define Device/Default
 	PROFILES := Default
