@@ -35,6 +35,16 @@ define Device/UbiFit
 	IMAGES += factory.ubi
 	IMAGE/factory.ubi := append-ubi
 endef
+# this will be removed next commit
+# better things to come ...
+define Build/nand-factory
+  $(TOPDIR)/scripts/mkits-glinet-ipq-image.sh \
+  	"$(BUILD_DIR)/linux-qualcommax_ipq50xx/tmp" \
+	"$(DEVICE_IMG_PREFIX)-squashfs-nand-factory"							
+  PATH=$(LINUX_DIR)/scripts/dtc:$(PATH) mkimage -f \
+  	"$(BUILD_DIR)/linux-qualcommax_ipq50xx/tmp/flash.its" \
+	"$(BUILD_DIR)/linux-qualcommax_ipq50xx/tmp/$(DEVICE_IMG_PREFIX)-squashfs-nand-factory.$1"
+endef
 
 include $(SUBTARGET).mk
 
