@@ -12,6 +12,7 @@
 	compatible ="glinet,gl-b3000", "qcom,ipq5018";
 
 	aliases {
+		ethernet0 = &dp1;
 		ethernet1 = &dp2;
 		label-mac-device = &dp2;
 		led-boot = &led_system_blue;
@@ -79,6 +80,7 @@
 			port_id = <1>;
 			mdiobus = <&mdio0>;
 			phy_address = <7>;
+			phy_dac = <0x10 0x10>;
 		};
 
 		// MAC1 ---SGMII---> QCA8337 SerDes
@@ -89,7 +91,10 @@
 		};
 	};
 };
-
+// MAC0 -> GE Phy
+&dp1 {
+	status = "okay";
+};
 // MAC1 ---SGMII---> QCA8337 SerDes
 &dp2 {
 	status = "okay";
@@ -138,6 +143,9 @@
 		reg = <17>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		switch_cpu_bmp = <0x40>;  /* cpu port bitmap */
+		switch_lan_bmp = <0x0c>; /* lan port bitmap */
+		switch_wan_bmp = <0x02>;  /* wan port bitmap */
 		
 		ports {
 			#address-cells = <1>;
