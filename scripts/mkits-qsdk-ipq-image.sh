@@ -13,6 +13,8 @@
 # both in CLI and GUI. The script is also universal in a way it allows
 # to include as many sections as needed.
 #
+SCRIPT_NODE=
+has_script=false
 
 usage() {
 	echo "Usage: `basename $0` output img0_name img0_file [[img1_name img1_file] ...]"
@@ -21,6 +23,23 @@ usage() {
 
 # We need at least 3 arguments
 [ "$#" -lt 3 ] && usage
+
+if [ "$#" -eq 4 ] && [ $(echo "$4" | cut -f 2 -d .) = "bootscript" ]; then
+	has_script=true
+	SCRIPT_NODE="
+		script {
+			description = \"UBOOT UPGRADE SCRIPT V2\";
+			data = /incbin/(\"${4}\");
+			type = \"script\";
+			arch = \"arm\";
+			os = \"linux\";
+			compression = \"none\";
+			hash1 {
+				algo = \"crc32\";
+			};
+		};
+		"
+fi
 
 # Target output file
 OUTPUT="$1"; shift
@@ -36,13 +55,14 @@ echo "\
 	images {" > ${OUTPUT}
 
 while [ -n "$1" -a -n "$2" ]; do
-	[ -f "$2" ] || usage
+	[ -f "$2" ] || [ $has_script ] || usage
 
 	name="$1"; shift
 	file="$1"; shift
 
 	echo \
-"		${name} {
+"		${SCRIPT_NODE}
+		${name} {
 			description = \"${name}\";
 			data = /incbin/(\"${file}\");
 			type = \"Firmware\";
@@ -52,6 +72,9 @@ while [ -n "$1" -a -n "$2" ]; do
 				algo = \"crc32\";
 			};
 		};" >> ${OUTPUT}
+
+	has_script=false
+	SCRIPT_NODE=""
 done
 
 echo \
