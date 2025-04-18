@@ -15,6 +15,7 @@ define Device/glinet_gl-b3000
 	BOOT_SCRIPT:= glinet_gl-b3000.bootscript
 	IMAGES := factory.img sysupgrade.bin
 	IMAGE/factory.img := append-ubi | gl-factory | append-metadata
+	IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 	DEVICE_PACKAGES := \
 		ath11k-firmware-qcn6122 \
 		ipq-wifi-glinet_gl-b3000 \
