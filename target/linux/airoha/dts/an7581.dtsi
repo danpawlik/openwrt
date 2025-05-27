@@ -3,6 +3,7 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/en7523-clk.h>
+#include <dt-bindings/phy/phy.h>
 #include <dt-bindings/reset/airoha,en7581-reset.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/thermal/thermal.h>
@@ -428,19 +429,20 @@
 			status = "disabled";
 		};
 
-		chip_scu: syscon@1fa20000 {
-			compatible = "airoha,en7581-chip-scu", "syscon";
-			reg = <0x0 0x1fa20000 0x0 0x388>;
-		};
-
 		pbus_csr: syscon@1fbe3400 {
 			compatible = "airoha,en7581-pbus-csr", "syscon";
 			reg = <0x0 0x1fbe3400 0x0 0xff>;
 		};
 
-		scuclk: clock-controller@1fa20000 {
+		chip_scu: syscon@1fa20000 {
+			compatible = "airoha,en7581-chip-scu", "syscon";
+			reg = <0x0 0x1fa20000 0x0 0x388>;
+		};
+
+		scuclk: clock-controller@1fb00000 {
 			compatible = "airoha,en7581-scu";
 			reg = <0x0 0x1fb00000 0x0 0x970>;
+
 			#clock-cells = <1>;
 			#reset-cells = <1>;
 		};
