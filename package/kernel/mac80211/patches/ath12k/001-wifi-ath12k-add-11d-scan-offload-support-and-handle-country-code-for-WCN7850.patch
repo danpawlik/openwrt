@@ -491,8 +491,8 @@ Acked-by: Jeff Johnson <quic_jjohnson@quicinc.com>
  			    arvif->vdev_id, ret);
 +
 +	if (test_bit(WMI_TLV_SERVICE_11D_OFFLOAD, ar->ab->wmi_ab.svc_map) &&
-+	    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
-+	    arvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE)
++	    ahvif->vdev_type == WMI_VDEV_TYPE_STA &&
++	    ahvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE)
 +		ath12k_mac_11d_scan_stop_all(ar->ab);
  }
  
@@ -525,8 +525,8 @@ Acked-by: Jeff Johnson <quic_jjohnson@quicinc.com>
  	mutex_unlock(&ar->conf_mutex);
  
 +	if (ar->state_11d == ATH12K_11D_PREPARING &&
-+	    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
-+	    arvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE)
++	    ahvif->vdev_type == WMI_VDEV_TYPE_STA &&
++	    ahvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE)
 +		ath12k_mac_11d_scan_start(ar, arvif->vdev_id);
 +
  	return ret;
@@ -559,14 +559,14 @@ Acked-by: Jeff Johnson <quic_jjohnson@quicinc.com>
 +{
 +	struct ath12k *ar;
 +	struct ath12k_pdev *pdev;
-+	struct ath12k_vif *arvif;
++	struct ath12k_link_vif *arvif;
 +	int i;
 +
 +	for (i = 0; i < ab->num_radios; i++) {
 +		pdev = &ab->pdevs[i];
 +		ar = pdev->ar;
 +		list_for_each_entry(arvif, &ar->arvifs, list) {
-+			if (arvif->is_up && arvif->vdev_type == WMI_VDEV_TYPE_AP)
++			if (arvif->is_up && arvif->ahvif->vdev_type == WMI_VDEV_TYPE_AP)
 +				return true;
 +		}
 +	}
@@ -683,8 +683,8 @@ Acked-by: Jeff Johnson <quic_jjohnson@quicinc.com>
  		}
 +
 +		if (test_bit(WMI_TLV_SERVICE_11D_OFFLOAD, ab->wmi_ab.svc_map) &&
-+		    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
-+		    arvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE) {
++		    ahvif->vdev_type == WMI_VDEV_TYPE_STA &&
++		    ahvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE) {
 +			reinit_completion(&ar->completed_11d_scan);
 +			ar->state_11d = ATH12K_11D_PREPARING;
 +		}
@@ -696,8 +696,8 @@ Acked-by: Jeff Johnson <quic_jjohnson@quicinc.com>
  		   arvif->vdev_id, arvif->link_id);
  
 +	if (test_bit(WMI_TLV_SERVICE_11D_OFFLOAD, ab->wmi_ab.svc_map) &&
-+	    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
-+	    arvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE)
++	    ahvif->vdev_type == WMI_VDEV_TYPE_STA &&
++	    ahvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE)
 +		ath12k_mac_11d_scan_stop(ar);
 +
  	if (ahvif->vdev_type == WMI_VDEV_TYPE_AP) {
@@ -708,8 +708,8 @@ Acked-by: Jeff Johnson <quic_jjohnson@quicinc.com>
  		ath12k_mac_monitor_stop(ar);
  
 +	if (test_bit(WMI_TLV_SERVICE_11D_OFFLOAD, ab->wmi_ab.svc_map) &&
-+	    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
-+	    arvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE &&
++	    ahvif->vdev_type == WMI_VDEV_TYPE_STA &&
++	    ahvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE &&
 +	    ar->state_11d != ATH12K_11D_PREPARING) {
 +		reinit_completion(&ar->completed_11d_scan);
 +		ar->state_11d = ATH12K_11D_PREPARING;
