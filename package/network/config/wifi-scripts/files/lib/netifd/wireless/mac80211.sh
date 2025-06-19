@@ -57,7 +57,12 @@ drv_mac80211_init_device_config() {
 		he_spr_sr_control \
 		he_spr_psr_enabled \
 		he_bss_color_enabled \
-		he_twt_required
+		he_twt_required \
+		he_twt_responder \
+		etxbfen \
+		itxbfen \
+		lpi_psd \
+		lpi_bcn_enhance
 	config_add_int \
 		beamformer_antennas \
 		beamformee_antennas \
@@ -68,7 +73,13 @@ drv_mac80211_init_device_config() {
 		rx_stbc \
 		tx_stbc \
 		he_bss_color \
-		he_spr_non_srg_obss_pd_max_offset
+		he_spr_non_srg_obss_pd_max_offset \
+		pp_bitmap \
+		pp_mode \
+		eml_disable \
+		eml_resp \
+		sku_idx \
+		lpi_sku_idx
 	config_add_boolean \
 		ldpc \
 		greenfield \
@@ -145,6 +156,7 @@ mac80211_hostapd_setup_base() {
 		append base_cfg "acs_exclude_dfs=1" "$N"
 
 	json_get_vars noscan ht_coex min_tx_power:0 tx_burst
+	json_get_vars etxbfen:1 itxbfen:0 eml_disable eml_resp lpi_psd sku_idx lpi_sku_idx lpi_bcn_enhance
 	json_get_values ht_capab_list ht_capab
 	json_get_values channel_list channels
 
@@ -358,6 +370,11 @@ mac80211_hostapd_setup_base() {
 			short_gi_160=0
 		}
 
+		[ "$etxbfen" -eq 0 ] && {
+			su_beamformer=0
+			su_beamformee=0
+			mu_beamformer=0
+		}
 		mac80211_add_capabilities vht_capab $vht_cap \
 			RXLDPC:0x10::$rxldpc \
 			SHORT-GI-80:0x20::$short_gi_80 \
@@ -450,6 +467,7 @@ mac80211_hostapd_setup_base() {
 			he_su_beamformee:1 \
 			he_mu_beamformer:1 \
 			he_twt_required:0 \
+			he_twt_responder \
 			he_spr_sr_control:3 \
 			he_spr_psr_enabled:0 \
 			he_spr_non_srg_obss_pd_max_offset:0 \
@@ -467,12 +485,19 @@ mac80211_hostapd_setup_base() {
 			append base_cfg "he_oper_centr_freq_seg0_idx=$vht_center_seg0" "$N"
 		}
 
+		[ "$etxbfen" -eq 0 ] && {
+			he_su_beamformer=0
+			he_mu_beamformer=0
+		}
 		mac80211_add_he_capabilities \
 			he_su_beamformer:${he_phy_cap:6:2}:0x80:$he_su_beamformer \
 			he_su_beamformee:${he_phy_cap:8:2}:0x1:$he_su_beamformee \
 			he_mu_beamformer:${he_phy_cap:8:2}:0x2:$he_mu_beamformer \
 			he_twt_required:${he_mac_cap:0:2}:0x6:$he_twt_required
 
+		if [ -n "$he_twt_responder" ]; then
+			append base_cfg "he_twt_responder=$he_twt_responder" "$N"
+		fi
 		if [ "$he_bss_color_enabled" -gt 0 ]; then
 			append base_cfg "he_bss_color=$he_bss_color" "$N"
 			[ "$he_spr_non_srg_obss_pd_max_offset" -gt 0 ] && { \
@@ -510,17 +535,34 @@ mac80211_hostapd_setup_base() {
 		append base_cfg "he_mu_edca_ac_vi_timer=255" "$N"
 		append base_cfg "he_mu_edca_ac_vo_aifsn=5" "$N"
 		append base_cfg "he_mu_edca_ac_vo_aci=3" "$N"
-		append base_cfg "he_mu_edca_ac_vo_ecwmin=5" "$N"
-		append base_cfg "he_mu_edca_ac_vo_ecwmax=7" "$N"
+		append base_cfg "he_mu_edca_ac_vo_ecwmin=9" "$N"
+		append base_cfg "he_mu_edca_ac_vo_ecwmax=10" "$N"
 		append base_cfg "he_mu_edca_ac_vo_timer=255" "$N"
 	fi
 
 	if [ "$enable_be" != "0" ]; then
+		json_get_vars \
+			pp_bitmap \
+			pp_mode
 		append base_cfg "ieee80211be=1" "$N"
+		if [ "$etxbfen" -eq 0 ]; then
+			append base_cfg "eht_su_beamformee=1" "$N"
+		else
+			append base_cfg "eht_su_beamformer=1" "$N"
+			append base_cfg "eht_su_beamformee=1" "$N"
+			append base_cfg "eht_mu_beamformer=1" "$N"
+		fi
 		[ "$hwmode" = "a" ] && {
 			append base_cfg "eht_oper_chwidth=$eht_oper_chwidth" "$N"
 			append base_cfg "eht_oper_centr_freq_seg0_idx=$eht_center_seg0" "$N"
 		}
+		if [ -n "$pp_bitmap" ]; then
+			append base_cfg "punct_bitmap=$pp_bitmap" "$N"
+		fi
+
+		if [ -n "$pp_mode" ]; then
+			append base_cfg "pp_mode=$pp_mode" "$N"
+		fi
 	fi
 
 	hostapd_prepare_device_config "$hostapd_conf_file" nl80211
@@ -530,6 +572,12 @@ ${channel_list:+chanlist=$channel_list}
 ${hostapd_noscan:+noscan=1}
 ${tx_burst:+tx_queue_data2_burst=$tx_burst}
 ${multiple_bssid:+mbssid=$multiple_bssid}
+${eml_disable:+eml_disable=$eml_disable}
+${eml_resp:+eml_resp=$eml_resp}
+${lpi_psd:+lpi_psd=$lpi_psd}
+${lpi_bcn_enhance:+lpi_bcn_enhance=$lpi_bcn_enhance}
+${sku_idx:+sku_idx=$sku_idx}
+${lpi_sku_idx:+lpi_sku_idx=$lpi_sku_idx}
 #num_global_macaddr=$num_global_macaddr
 #macaddr_base=$macaddr_base
 $base_cfg
