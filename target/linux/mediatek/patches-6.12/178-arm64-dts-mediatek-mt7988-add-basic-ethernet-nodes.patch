@@ -92,7 +92,7 @@ Signed-off-by: Frank Wunderlich <frank-w@public-files.de>
  			compatible = "mediatek,mt7988-xfi-pll";
  			reg = <0 0x11f40000 0 0x1000>;
  			resets = <&watchdog 16>;
-@@ -720,19 +741,116 @@
+@@ -720,19 +741,120 @@
  			};
  		};
  
@@ -119,7 +119,11 @@ Signed-off-by: Frank Wunderlich <frank-w@public-files.de>
 +			interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
 +				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>,
 +				     <GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>,
-+				     <GIC_SPI 199 IRQ_TYPE_LEVEL_HIGH>;
++				     <GIC_SPI 199 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 192 IRQ_TYPE_LEVEL_HIGH>;
 +			clocks = <&ethsys CLK_ETHDMA_CRYPT0_EN>,
 +				 <&ethsys CLK_ETHDMA_FE_EN>,
 +				 <&ethsys CLK_ETHDMA_GP2_EN>,
