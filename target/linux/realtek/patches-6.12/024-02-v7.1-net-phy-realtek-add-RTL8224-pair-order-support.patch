@@ -37,7 +37,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  
 --- a/drivers/net/phy/realtek/realtek_main.c
 +++ b/drivers/net/phy/realtek/realtek_main.c
-@@ -175,6 +175,8 @@
+@@ -176,6 +176,8 @@
  #define RTL8221B_PHYCR1_ALDPS_XTAL_OFF_EN	BIT(12)
  #define RTL8221B_PHYCR1_PHYAD_0_EN		BIT(13)
  
@@ -46,7 +46,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  #define RTL8366RB_POWER_SAVE			0x15
  #define RTL8366RB_POWER_SAVE_ON			BIT(12)
  
-@@ -1865,6 +1867,66 @@ static int rtl8224_cable_test_get_status
+@@ -1879,6 +1881,66 @@ static int rtl8224_cable_test_get_status
  	return rtl8224_cable_test_report(phydev, finished);
  }
  
@@ -113,7 +113,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  static bool rtlgen_supports_2_5gbps(struct phy_device *phydev)
  {
  	int val;
-@@ -2466,6 +2528,8 @@ static struct phy_driver realtek_drvs[]
+@@ -3018,6 +3080,8 @@ static struct phy_driver realtek_drvs[]
  		PHY_ID_MATCH_EXACT(0x001ccad0),
  		.name		= "RTL8224 2.5Gbps PHY",
  		.flags		= PHY_POLL_CABLE_TEST,
