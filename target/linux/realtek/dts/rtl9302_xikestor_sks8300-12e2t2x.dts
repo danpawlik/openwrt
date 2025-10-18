@@ -207,10 +207,12 @@
 	phy24: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <0>;
+		realtek,patch-rtk-serdes;
 	};
 	phy25: ethernet-phy@1 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <1>;
+		realtek,patch-rtk-serdes;
 	};
 };
 
