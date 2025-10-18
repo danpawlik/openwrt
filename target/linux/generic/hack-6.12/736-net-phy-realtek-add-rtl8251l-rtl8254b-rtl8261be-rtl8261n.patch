@@ -57,7 +57,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  #include "realtek.h"
  
 @@ -185,6 +186,7 @@
- 
+
  #define PHYID_RTL_GENERIC			0x001cc800
  #define PHYID_RTL8201CP			0x00008201
 +#define PHYID_RTL8264B				0x001cc813

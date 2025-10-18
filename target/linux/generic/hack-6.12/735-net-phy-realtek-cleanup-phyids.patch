@@ -160,7 +160,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  
  static int rtlgen_resume(struct phy_device *phydev)
 @@ -1911,12 +1928,12 @@ static irqreturn_t rtl8221b_handle_inter
- 
+
  static struct phy_driver realtek_drvs[] = {
  	{
 -		PHY_ID_MATCH_EXACT(0x00008201),
