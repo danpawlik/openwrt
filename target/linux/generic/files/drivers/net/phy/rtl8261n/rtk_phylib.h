@@ -51,7 +51,9 @@ struct rtk_phy_priv {
     uint8 isBasePort;
     rt_phy_patch_db_t *patch;
 
+    bool pnswap_rx;
     bool pnswap_tx;
+    bool gemtek_magic;
 };
 
 #if defined(RTK_PHYDRV_IN_LINUX)

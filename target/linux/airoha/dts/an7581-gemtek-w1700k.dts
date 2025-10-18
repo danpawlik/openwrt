@@ -308,6 +308,7 @@
 			compatible = "ethernet-phy-ieee802.3-c45";
 			reg = <5>;
 			realtek,pnswap-tx;
+			realtek,gemtek-magic;
 			reset-gpios = <&en7581_pinctrl 46 GPIO_ACTIVE_LOW>;
 		};
 
@@ -315,6 +316,7 @@
 			compatible = "ethernet-phy-ieee802.3-c45";
 			reg = <8>;
 			realtek,pnswap-tx;
+			realtek,gemtek-magic;
 			reset-gpios = <&en7581_pinctrl 31 GPIO_ACTIVE_LOW>;
 		};
 	};

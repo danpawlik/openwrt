@@ -61,6 +61,8 @@ static int rtl826xb_probe(struct phy_device *phydev)
 
     priv->phytype = (phydev->drv->phy_id == REALTEK_PHY_ID_RTL8261N) ? (RTK_PHYLIB_RTL8261N) : (RTK_PHYLIB_RTL8264B);
     priv->isBasePort = (phydev->drv->phy_id == REALTEK_PHY_ID_RTL8261N) ? (1) : (((phydev->mdio.addr % 4) == 0) ? (1) : (0));
+    priv->gemtek_magic = device_property_read_bool(dev, "realtek,gemtek-magic");
+    priv->pnswap_rx = device_property_read_bool(dev, "realtek,pnswap-rx");
     priv->pnswap_tx = device_property_read_bool(dev, "realtek,pnswap-tx");
     phydev->priv = priv;
 
@@ -80,6 +82,9 @@ static int rtkphy_config_init(struct phy_device *phydev)
 #ifdef CONFIG_MACH_REALTEK_RTL
             return 0;
 #endif
+
+        if(priv->gemtek_magic)
+            mdelay(50);
 
           #if 1 /* toggle reset */
             phy_modify_mmd_changed(phydev, 30, 0x145, BIT(0)  , 1);
@@ -129,6 +134,21 @@ static int rtkphy_config_init(struct phy_device *phydev)
                 phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
                                  REALTEK_SERDES_GLOBAL_CFG,
                                  REALTEK_HSO_INV);
+
+            if (!priv->pnswap_rx)
+                phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
+                                 REALTEK_SERDES_GLOBAL_CFG,
+                                 REALTEK_HSI_INV);
+
+
+            // Unknown W1700k specific writes
+            if (priv->gemtek_magic) {
+                phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x19, 0x154);
+                phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1A, 0x20C);
+                phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1D, 0x1);
+                phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1E, 0x20C);
+                printk("Strange Gemtek magic write");
+            }
 
             break;
         default:
