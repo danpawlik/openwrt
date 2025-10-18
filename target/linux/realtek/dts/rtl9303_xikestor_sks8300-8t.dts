@@ -133,21 +133,25 @@
 	phy0: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <0>;
+		realtek,patch-rtk-serdes;
 	};
 
 	phy8: ethernet-phy@1 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <1>;
+		realtek,patch-rtk-serdes;
 	};
 
 	phy16: ethernet-phy@2 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <2>;
+		realtek,patch-rtk-serdes;
 	};
 
 	phy20: ethernet-phy@3 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <3>;
+		realtek,patch-rtk-serdes;
 	};
 };
 
@@ -155,21 +159,25 @@
 	phy24: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <0>;
+		realtek,patch-rtk-serdes;
 	};
 
 	phy25: ethernet-phy@1 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <1>;
+		realtek,patch-rtk-serdes;
 	};
 
 	phy26: ethernet-phy@2 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <2>;
+		realtek,patch-rtk-serdes;
 	};
 
 	phy27: ethernet-phy@3 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <3>;
+		realtek,patch-rtk-serdes;
 	};
 };
 
