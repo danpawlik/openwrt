@@ -348,19 +348,22 @@
 };
 
 &gsw_port1 {
+	status = "okay";
 	label = "lan3";
 };
 
+&gsw_phy1 {
+	status = "okay";
+};
+
 &gsw_port2 {
+	status = "okay";
 	label = "lan4";
 };
 
-&gsw_port3 {
-	status = "disabled";
-};
+&gsw_phy2 {
+	status = "okay";
 
-&gsw_port4 {
-	status = "disabled";
 };
 
 &uart2 {
