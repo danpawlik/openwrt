@@ -1,10 +1,17 @@
----
- include/linux/soc/airoha/airoha_offload.h | 8 ++++----
- 1 file changed, 4 insertions(+), 4 deletions(-)
+From e45995796284d57855803c38faaa770d0877ed90 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Sat, 3 Jan 2026 12:36:59 +0000
+Subject: [PATCH] 117-02-npu_fix_typos_in_npu_rx_DMA_descriptor_definitions
 
+---
+ include/linux/soc/airoha/airoha_offload.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/include/linux/soc/airoha/airoha_offload.h b/include/linux/soc/airoha/airoha_offload.h
+index c50c75ce7..ab64ecdf3 100644
 --- a/include/linux/soc/airoha/airoha_offload.h
 +++ b/include/linux/soc/airoha/airoha_offload.h
-@@ -71,12 +71,12 @@ static inline void airoha_ppe_dev_check_skb(struct airoha_ppe_dev *dev,
+@@ -71,9 +71,9 @@ static inline void airoha_ppe_dev_check_skb(struct airoha_ppe_dev *dev,
  #define NPU_RX1_DESC_NUM	512
  
  /* CTRL */
@@ -16,8 +23,7 @@
 +#define NPU_RX_DMA_DESC_CUR_LEN_MASK	GENMASK(13, 1)
  #define NPU_RX_DMA_DESC_DONE_MASK	BIT(0)
  /* INFO */
--#define NPU_RX_DMA_PKT_COUNT_MASK	GENMASK(31, 28)
-+#define NPU_RX_DMA_PKT_COUNT_MASK	GENMASK(31, 29)
- #define NPU_RX_DMA_PKT_ID_MASK		GENMASK(28, 26)
- #define NPU_RX_DMA_SRC_PORT_MASK	GENMASK(25, 21)
- #define NPU_RX_DMA_CRSN_MASK		GENMASK(20, 16)
+ #define NPU_RX_DMA_PKT_COUNT_MASK	GENMASK(31, 29)
+-- 
+2.52.0
+
