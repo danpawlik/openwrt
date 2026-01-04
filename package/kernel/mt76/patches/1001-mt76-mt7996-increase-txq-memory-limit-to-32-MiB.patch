@@ -1,0 +1,28 @@
+From c08a3253bc46394086b3605cef6080b5cd9a6910 Mon Sep 17 00:00:00 2001
+From: Chad Monroe <chad@monroe.io>
+Date: Mon, 8 Dec 2025 14:14:50 +0000
+Subject: [PATCH 1001/1018] mt76: mt7996: increase txq memory limit to 32 MiB
+
+Prior to this change, both 2G and 6G radios would fall back to the
+mac80211 default of 4MB which is not enough for high data rates.
+
+Signed-off-by: Chad Monroe <chad@monroe.io>
+---
+ mt7996/init.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/mt7996/init.c b/mt7996/init.c
+index 3996c59b..0b2490ed 100644
+--- a/mt7996/init.c
++++ b/mt7996/init.c
+@@ -524,6 +524,7 @@ mt7996_init_wiphy(struct ieee80211_hw *hw, struct mtk_wed_device *wed)
+ 	ieee80211_hw_set(hw, SUPPORTS_MULTI_BSSID);
+ 
+ 	hw->max_tx_fragments = 4;
++	wiphy->txq_memory_limit = 32 << 20; /* 32 MiB */
+ 
+ 	/* init led callbacks */
+ 	if (IS_ENABLED(CONFIG_MT76_LEDS)) {
+-- 
+2.47.3
+
