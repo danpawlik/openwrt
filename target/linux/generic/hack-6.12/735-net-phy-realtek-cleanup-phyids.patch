@@ -10,7 +10,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
 
 ---
  drivers/net/phy/realtek/realtek_main.c | 99 +++++++++++++++-----------
- 1 file changed, 58 insertions(+), 41 deletions(-)
+ 1 file changed, 57 insertions(+), 40 deletions(-)
 
 --- a/drivers/net/phy/realtek/realtek_main.c
 +++ b/drivers/net/phy/realtek/realtek_main.c
