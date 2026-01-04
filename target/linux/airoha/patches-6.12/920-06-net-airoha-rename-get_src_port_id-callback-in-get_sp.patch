@@ -1,0 +1,98 @@
+From 38e466e03df92fdd05c6ef87cda6ef4380f8dda9 Mon Sep 17 00:00:00 2001
+Message-ID: <38e466e03df92fdd05c6ef87cda6ef4380f8dda9.1764515564.git.lorenzo@kernel.org>
+In-Reply-To: <ebd1eb325210ac6caf6b7a242083f41e3b9f0acd.1764515564.git.lorenzo@kernel.org>
+References: <ebd1eb325210ac6caf6b7a242083f41e3b9f0acd.1764515564.git.lorenzo@kernel.org>
+From: Lorenzo Bianconi <lorenzo@kernel.org>
+Date: Sun, 2 Nov 2025 10:12:05 +0100
+Subject: [PATCH nf-next 6/6] net: airoha: rename get_src_port_id callback in
+ get_sport
+
+In order to be consistent rename get_src_port_id callback in get_sport.
+This is just a cosmetic change, no logic has been modified.
+
+Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
+---
+ drivers/net/ethernet/airoha/airoha_eth.c | 10 +++++-----
+ drivers/net/ethernet/airoha/airoha_eth.h |  2 +-
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -1754,7 +1754,7 @@ static int airhoha_set_gdm2_loopback(str
+ 	airoha_fe_clear(eth, REG_FE_VIP_PORT_EN, BIT(2));
+ 	airoha_fe_clear(eth, REG_FE_IFC_PORT_EN, BIT(2));
+ 
+-	src_port = eth->soc->ops.get_src_port_id(port, dev->nbq);
++	src_port = eth->soc->ops.get_sport(port, dev->nbq);
+ 	if (src_port < 0)
+ 		return src_port;
+ 
+@@ -3381,17 +3381,17 @@ static const char * const en7581_xsi_rst
+ 	"xfp-mac",
+ };
+ 
+-static int airoha_en7581_get_src_port_id(struct airoha_gdm_port *port, int nbq)
++static int airoha_en7581_get_sport(struct airoha_gdm_port *port, int nbq)
+ {
+ 	switch (port->id) {
+-	case 3:
++	case AIROHA_GDM3_IDX:
+ 		/* 7581 SoC supports PCIe serdes on GDM3 port */
+ 		if (nbq == 4)
+ 			return HSGMII_LAN_7581_PCIE0_SRCPORT;
+ 		if (nbq == 5)
+ 			return HSGMII_LAN_7581_PCIE1_SRCPORT;
+ 		break;
+-	case 4:
++	case AIROHA_GDM4_IDX:
+ 		/* 7581 SoC supports eth and usb serdes on GDM4 port */
+ 		if (!nbq)
+ 			return HSGMII_LAN_7581_ETH_SRCPORT;
+@@ -3441,15 +3441,15 @@ static const char * const an7583_xsi_rst
+ 	"xfp-mac",
+ };
+ 
+-static int airoha_an7583_get_src_port_id(struct airoha_gdm_port *port, int nbq)
++static int airoha_an7583_get_sport(struct airoha_gdm_port *port, int nbq)
+ {
+ 	switch (port->id) {
+-	case 3:
++	case AIROHA_GDM3_IDX:
+ 		/* 7583 SoC supports eth serdes on GDM3 port */
+ 		if (!nbq)
+ 			return HSGMII_LAN_7583_ETH_SRCPORT;
+ 		break;
+-	case 4:
++	case AIROHA_GDM4_IDX:
+ 		/* 7583 SoC supports PCIe and USB serdes on GDM4 port */
+ 		if (!nbq)
+ 			return HSGMII_LAN_7583_PCIE_SRCPORT;
+@@ -3496,7 +3496,7 @@ static const struct airoha_eth_soc_data
+ 	.num_xsi_rsts = ARRAY_SIZE(en7581_xsi_rsts_names),
+ 	.num_ppe = 2,
+ 	.ops = {
+-		.get_src_port_id = airoha_en7581_get_src_port_id,
++		.get_sport = airoha_en7581_get_sport,
+ 		.get_dev_from_sport = airoha_en7581_get_dev_from_sport,
+ 	},
+ };
+@@ -3507,7 +3507,7 @@ static const struct airoha_eth_soc_data
+ 	.num_xsi_rsts = ARRAY_SIZE(an7583_xsi_rsts_names),
+ 	.num_ppe = 1,
+ 	.ops = {
+-		.get_src_port_id = airoha_an7583_get_src_port_id,
++		.get_sport = airoha_an7583_get_sport,
+ 		.get_dev_from_sport = airoha_an7583_get_dev_from_sport,
+ 	},
+ };
+--- a/drivers/net/ethernet/airoha/airoha_eth.h
++++ b/drivers/net/ethernet/airoha/airoha_eth.h
+@@ -588,7 +588,7 @@ struct airoha_eth_soc_data {
+ 	int num_xsi_rsts;
+ 	int num_ppe;
+ 	struct {
+-		int (*get_src_port_id)(struct airoha_gdm_port *port, int nbq);
++		int (*get_sport)(struct airoha_gdm_port *port, int nbq);
+ 		int (*get_dev_from_sport)(struct airoha_qdma_desc *desc,
+ 					  u16 *port, u16 *dev);
+ 	} ops;

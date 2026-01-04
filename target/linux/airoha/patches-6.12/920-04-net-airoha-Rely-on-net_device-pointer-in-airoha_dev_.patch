@@ -1,0 +1,62 @@
+From 1abd1927f468a85918b27a6ecfdd1374478b0566 Mon Sep 17 00:00:00 2001
+Message-ID: <1abd1927f468a85918b27a6ecfdd1374478b0566.1764515564.git.lorenzo@kernel.org>
+In-Reply-To: <ebd1eb325210ac6caf6b7a242083f41e3b9f0acd.1764515564.git.lorenzo@kernel.org>
+References: <ebd1eb325210ac6caf6b7a242083f41e3b9f0acd.1764515564.git.lorenzo@kernel.org>
+From: Lorenzo Bianconi <lorenzo@kernel.org>
+Date: Sat, 1 Nov 2025 12:19:58 +0100
+Subject: [PATCH nf-next 4/6] net: airoha: Rely on net_device pointer in
+ airoha_dev_setup_tc_block signature
+
+This is a preliminary patch to support multiple net_devices connected
+to the same Frame Engine GDM port via an external arbiter.
+
+Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
+---
+ drivers/net/ethernet/airoha/airoha_eth.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -2712,7 +2712,7 @@ static int airoha_dev_setup_tc_block_cb(
+ 	}
+ }
+ 
+-static int airoha_dev_setup_tc_block(struct airoha_gdm_port *port,
++static int airoha_dev_setup_tc_block(struct net_device *dev,
+ 				     struct flow_block_offload *f)
+ {
+ 	flow_setup_cb_t *cb = airoha_dev_setup_tc_block_cb;
+@@ -2725,13 +2725,12 @@ static int airoha_dev_setup_tc_block(str
+ 	f->driver_block_list = &block_cb_list;
+ 	switch (f->command) {
+ 	case FLOW_BLOCK_BIND:
+-		block_cb = flow_block_cb_lookup(f->block, cb, port->dev->dev);
++		block_cb = flow_block_cb_lookup(f->block, cb, dev);
+ 		if (block_cb) {
+ 			flow_block_cb_incref(block_cb);
+ 			return 0;
+ 		}
+-		block_cb = flow_block_cb_alloc(cb, port->dev->dev,
+-					       port->dev->dev, NULL);
++		block_cb = flow_block_cb_alloc(cb, dev, dev, NULL);
+ 		if (IS_ERR(block_cb))
+ 			return PTR_ERR(block_cb);
+ 
+@@ -2740,7 +2739,7 @@ static int airoha_dev_setup_tc_block(str
+ 		list_add_tail(&block_cb->driver_list, &block_cb_list);
+ 		return 0;
+ 	case FLOW_BLOCK_UNBIND:
+-		block_cb = flow_block_cb_lookup(f->block, cb, port->dev->dev);
++		block_cb = flow_block_cb_lookup(f->block, cb, dev);
+ 		if (!block_cb)
+ 			return -ENOENT;
+ 
+@@ -2847,7 +2846,7 @@ static int airoha_dev_tc_setup(struct ne
+ 		return airoha_tc_setup_qdisc_htb(netdev, type_data);
+ 	case TC_SETUP_BLOCK:
+ 	case TC_SETUP_FT:
+-		return airoha_dev_setup_tc_block(port, type_data);
++		return airoha_dev_setup_tc_block(netdev, type_data);
+ 	default:
+ 		return -EOPNOTSUPP;
+ 	}
