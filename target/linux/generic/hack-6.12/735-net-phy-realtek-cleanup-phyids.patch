@@ -61,15 +61,6 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		ret = phy_modify_paged(phydev, RTL8211FVD_CLKOUT_PAGE,
  				       RTL8211FVD_CLKOUT_REG,
  				       RTL8211FVD_CLKOUT_EN, 0);
-@@ -696,7 +713,7 @@ static int rtl8211f_config_aldps(struct
- static int rtl8211f_config_phy_eee(struct phy_device *phydev)
- {
- 	/* RTL8211FVD has no PHYCR2 register */
--	if (phydev->drv->phy_id == RTL_8211FVD_PHYID)
-+	if (phydev->drv->phy_id == PHYID_RTL8211FVD)
- 		return 0;
- 
- 	/* Disable PHY-mode EEE so LPI is passed to the MAC */
 @@ -1240,7 +1257,7 @@ static int rtl822x_write_mmd(struct phy_
  static int rtl822x_probe(struct phy_device *phydev)
  {
@@ -165,7 +156,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  	{
 -		PHY_ID_MATCH_EXACT(0x00008201),
 +		PHY_ID_MATCH_EXACT(PHYID_RTL8201CP),
- 		.name           = "RTL8201CP Ethernet",
+ 		.name		= "RTL8201CP Ethernet",
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -252,18 +243,18 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  	}, {
 -		PHY_ID_MATCH_EXACT(0x001cc838),
 +		PHY_ID_MATCH_EXACT(PHYID_RTL8226),
- 		.name           = "RTL8226-CG 2.5Gbps PHY",
+ 		.name		= "RTL8226-CG 2.5Gbps PHY",
  		.soft_reset     = rtl822x_c45_soft_reset,
- 		.get_features   = rtl822x_c45_get_features,
+ 		.get_features	= rtl822x_c45_get_features,
 @@ -2211,7 +2228,7 @@ static struct phy_driver realtek_drvs[]
  		.suspend        = genphy_c45_pma_suspend,
  		.resume         = rtlgen_c45_resume,
  	}, {
 -		PHY_ID_MATCH_EXACT(0x001cc848),
 +		PHY_ID_MATCH_EXACT(PHYID_RTL8226B),
- 		.name           = "RTL8226B-CG_RTL8221B-CG 2.5Gbps PHY",
+ 		.name		= "RTL8226B-CG_RTL8221B-CG 2.5Gbps PHY",
  		.soft_reset     = genphy_soft_reset,
- 		.get_features   = rtl822x_get_features,
+ 		.get_features	= rtl822x_get_features,
 @@ -2305,7 +2322,7 @@ static struct phy_driver realtek_drvs[]
  		.read_mmd	= rtl822x_read_mmd,
  		.write_mmd	= rtl822x_write_mmd,
@@ -290,7 +281,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
 -		.name		= "RTL9000AA_RTL9000AN Ethernet",
 +		PHY_ID_MATCH_EXACT(PHYID_RTL9000A),
 +		.name		= "RTL9000AA/RTL9000AN Ethernet",
- 		.features       = PHY_BASIC_T1_FEATURES,
+ 		.features	= PHY_BASIC_T1_FEATURES,
  		.config_init	= rtl9000a_config_init,
  		.config_aneg	= rtl9000a_config_aneg,
 @@ -2342,7 +2359,7 @@ static struct phy_driver realtek_drvs[]
