@@ -61,9 +61,9 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		ret = phy_modify_paged(phydev, RTL8211FVD_CLKOUT_PAGE,
  				       RTL8211FVD_CLKOUT_REG,
  				       RTL8211FVD_CLKOUT_EN, 0);
-@@ -1262,7 +1279,7 @@ static int rtl822x_probe(struct phy_devi
- 	phydev->priv = priv;
- 
+@@ -1240,7 +1257,7 @@ static int rtl822x_write_mmd(struct phy_
+ static int rtl822x_probe(struct phy_device *phydev)
+ {
  	if (IS_ENABLED(CONFIG_REALTEK_PHY_HWMON) &&
 -	    phydev->phy_id != RTL_GENERIC_PHYID)
 +	    phydev->phy_id != PHYID_RTL_GENERIC)
