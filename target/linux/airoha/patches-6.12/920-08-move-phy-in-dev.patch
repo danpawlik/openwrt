@@ -1,6 +1,6 @@
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
 +++ b/drivers/net/ethernet/airoha/airoha_eth.c
-@@ -1632,7 +1632,7 @@ static int airoha_dev_open(struct net_de
+@@ -1633,7 +1633,7 @@ static int airoha_dev_open(struct net_de
  
  #if defined(CONFIG_PCS_AIROHA)
  	if (airhoa_is_phy_external(port)) {
@@ -8,8 +8,8 @@
 +		err = phylink_of_phy_connect(dev->phylink,
  					     netdev->dev.of_node, 0);
  		if (err) {
- 			netdev_err(netdev, "%s: could not attach PHY: %d\n",
-@@ -1640,7 +1640,7 @@ static int airoha_dev_open(struct net_de
+ 			netdev_err(netdev, "%s: could not attach PHY: %d\n", __func__,
+@@ -1641,7 +1641,7 @@ static int airoha_dev_open(struct net_de
  			return err;
  		}
  
@@ -18,7 +18,7 @@
  	}
  #endif
  
-@@ -1700,8 +1700,8 @@ static int airoha_dev_stop(struct net_de
+@@ -1712,8 +1712,8 @@ static int airoha_dev_stop(struct net_de
  
  #if defined(CONFIG_PCS_AIROHA)
  	if (airhoa_is_phy_external(port)) {
@@ -29,7 +29,7 @@
  	}
  #endif
  
-@@ -2870,10 +2870,10 @@ static const struct ethtool_ops airoha_e
+@@ -2867,10 +2867,10 @@ static const struct ethtool_ops airoha_e
  static struct phylink_pcs *airoha_phylink_mac_select_pcs(struct phylink_config *config,
  							 phy_interface_t interface)
  {
@@ -43,7 +43,7 @@
  }
  
  static void airoha_mac_config(struct phylink_config *config, unsigned int mode,
-@@ -2939,8 +2939,9 @@ static void airoha_mac_link_up(struct ph
+@@ -2936,8 +2936,9 @@ static void airoha_mac_link_up(struct ph
  			       unsigned int mode, phy_interface_t interface,
  			       int speed, int duplex, bool tx_pause, bool rx_pause)
  {
@@ -55,7 +55,7 @@
  	struct airoha_qdma *qdma = port->qdma;
  	struct airoha_eth *eth = qdma->eth;
  	u32 frag_size_tx, frag_size_rx;
-@@ -2986,7 +2987,6 @@ static int airoha_setup_phylink(struct n
+@@ -2983,7 +2984,6 @@ static int airoha_setup_phylink(struct n
  {
  	struct airoha_gdm_dev *dev = netdev_priv(netdev);
  	struct device_node *np = netdev->dev.of_node;
@@ -63,7 +63,7 @@
  	phy_interface_t phy_mode;
  	struct phylink *phylink;
  	int err;
-@@ -2997,34 +2997,34 @@ static int airoha_setup_phylink(struct n
+@@ -2994,34 +2994,34 @@ static int airoha_setup_phylink(struct n
  		return err;
  	}
  
@@ -114,7 +114,7 @@
  
  	return 0;
  }
-@@ -3311,18 +3311,17 @@ error_hw_cleanup:
+@@ -3307,18 +3307,17 @@ error_hw_cleanup:
  			continue;
  
  		airoha_metadata_dst_free(port);
@@ -139,7 +139,7 @@
  			if (dev->dev->reg_state == NETREG_REGISTERED)
  				unregister_netdev(dev->dev);
  		}
-@@ -3351,19 +3350,17 @@ static void airoha_remove(struct platfor
+@@ -3347,19 +3346,17 @@ static void airoha_remove(struct platfor
  			continue;
  
  		airoha_metadata_dst_free(port);

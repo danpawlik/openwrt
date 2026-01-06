@@ -13,11 +13,9 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  drivers/net/ethernet/airoha/airoha_eth.c | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/drivers/net/ethernet/airoha/airoha_eth.c b/drivers/net/ethernet/airoha/airoha_eth.c
-index 1df27fae4679..b2d996a9949a 100644
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
 +++ b/drivers/net/ethernet/airoha/airoha_eth.c
-@@ -1686,7 +1686,7 @@ static int airoha_dev_set_macaddr(struct net_device *netdev, void *p)
+@@ -1734,7 +1734,7 @@ static int airoha_dev_set_macaddr(struct
  	return 0;
  }
  
@@ -26,7 +24,7 @@ index 1df27fae4679..b2d996a9949a 100644
  {
  	struct airoha_gdm_port *port = dev->port;
  	struct airoha_eth *eth = port->qdma->eth;
-@@ -1757,7 +1757,7 @@ static int airoha_dev_init(struct net_device *netdev)
+@@ -1807,7 +1807,7 @@ static int airoha_dev_init(struct net_de
  		if (!eth->ports[1]) {
  			int err;
  
@@ -35,6 +33,3 @@ index 1df27fae4679..b2d996a9949a 100644
  			if (err)
  				return err;
  		}
--- 
-2.52.0
-

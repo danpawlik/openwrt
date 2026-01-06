@@ -1,0 +1,51 @@
+From e3e901eb07c8dc92cf3c9c6327e6153f0f05097c Mon Sep 17 00:00:00 2001
+Message-ID: <e3e901eb07c8dc92cf3c9c6327e6153f0f05097c.1766621957.git.lorenzo@kernel.org>
+In-Reply-To: <c805a2db19bae3e2a1b9a49b0aba78bda9ce2c65.1766621957.git.lorenzo@kernel.org>
+References: <c805a2db19bae3e2a1b9a49b0aba78bda9ce2c65.1766621957.git.lorenzo@kernel.org>
+From: Lorenzo Bianconi <lorenzo@kernel.org>
+Date: Tue, 23 Dec 2025 09:04:20 +0100
+Subject: [net 2/2] net: airoha: Fix GDM2 loopback configuration for USB serdes
+
+Fix Flow Control source port mapping for USB serdes.
+Moreover disable packet forwarding during GDM2 configuration.
+
+Fixes: 9cd451d414f6e ("net: airoha: Add loopback support for GDM2")
+Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
+---
+ drivers/net/ethernet/airoha/airoha_eth.c  | 10 ++++++----
+ drivers/net/ethernet/airoha/airoha_regs.h |  5 +----
+ 2 files changed, 7 insertions(+), 8 deletions(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -1782,10 +1782,12 @@ static int airhoha_set_gdm2_loopback(str
+ 		      SP_CPORT_MASK(val),
+ 		      FE_PSE_PORT_CDM2 << __ffs(SP_CPORT_MASK(val)));
+ 
+-	if (port->id != AIROHA_GDM3_IDX && airoha_is_7581(eth))
+-		airoha_fe_rmw(eth, REG_SRC_PORT_FC_MAP6,
+-			      FC_ID_OF_SRC_PORT24_MASK,
+-			      FIELD_PREP(FC_ID_OF_SRC_PORT24_MASK, 2));
++	if (port->id == AIROHA_GDM4_IDX && airoha_is_7581(eth)) {
++		u32 mask = FC_ID_OF_SRC_PORT_MASK(nbq);
++
++		airoha_fe_rmw(eth, REG_SRC_PORT_FC_MAP6, mask,
++			      AIROHA_GDM2_IDX << __ffs(mask));
++	}
+ 
+ 	return 0;
+ }
+--- a/drivers/net/ethernet/airoha/airoha_regs.h
++++ b/drivers/net/ethernet/airoha/airoha_regs.h
+@@ -387,10 +387,7 @@
+ #define SP_CPORT_MASK(_n)		GENMASK(3 + ((_n) << 2), ((_n) << 2))
+ 
+ #define REG_SRC_PORT_FC_MAP6		0x2298
+-#define FC_ID_OF_SRC_PORT27_MASK	GENMASK(28, 24)
+-#define FC_ID_OF_SRC_PORT26_MASK	GENMASK(20, 16)
+-#define FC_ID_OF_SRC_PORT25_MASK	GENMASK(12, 8)
+-#define FC_ID_OF_SRC_PORT24_MASK	GENMASK(4, 0)
++#define FC_ID_OF_SRC_PORT_MASK(_n)	GENMASK(4 + ((_n) << 3), ((_n) << 3))
+ 
+ #define REG_CDM5_RX_OQ1_DROP_CNT	0x29d4
+ 

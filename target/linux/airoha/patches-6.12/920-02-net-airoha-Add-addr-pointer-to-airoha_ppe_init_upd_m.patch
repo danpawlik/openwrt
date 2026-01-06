@@ -28,7 +28,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  }
  
  static void airoha_set_gdm_port_fwd_cfg(struct airoha_eth *eth, u32 addr,
-@@ -1716,14 +1716,13 @@ static int airoha_dev_stop(struct net_de
+@@ -1728,14 +1728,13 @@ static int airoha_dev_stop(struct net_de
  static int airoha_dev_set_macaddr(struct net_device *netdev, void *p)
  {
  	struct airoha_gdm_dev *dev = netdev_priv(netdev);
@@ -46,7 +46,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  }
 --- a/drivers/net/ethernet/airoha/airoha_eth.h
 +++ b/drivers/net/ethernet/airoha/airoha_eth.h
-@@ -665,7 +665,7 @@ void airoha_ppe_check_skb(struct airoha_
+@@ -667,7 +667,7 @@ void airoha_ppe_check_skb(struct airoha_
  int airoha_ppe_setup_tc_block_cb(struct airoha_ppe_dev *dev, void *type_data);
  int airoha_ppe_init(struct airoha_eth *eth);
  void airoha_ppe_deinit(struct airoha_eth *eth);
@@ -57,7 +57,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  						  u32 hash);
 --- a/drivers/net/ethernet/airoha/airoha_ppe.c
 +++ b/drivers/net/ethernet/airoha/airoha_ppe.c
-@@ -1400,11 +1400,9 @@ void airoha_ppe_check_skb(struct airoha_
+@@ -1421,11 +1421,9 @@ void airoha_ppe_check_skb(struct airoha_
  	airoha_ppe_foe_insert_entry(ppe, skb, hash, rx_wlan);
  }
  

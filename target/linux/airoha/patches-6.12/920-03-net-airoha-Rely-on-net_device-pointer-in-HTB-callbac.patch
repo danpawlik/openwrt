@@ -17,7 +17,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
 +++ b/drivers/net/ethernet/airoha/airoha_eth.c
-@@ -2538,14 +2538,14 @@ static int airoha_qdma_set_tx_rate_limit
+@@ -2535,14 +2535,14 @@ static int airoha_qdma_set_tx_rate_limit
  	return 0;
  }
  
@@ -36,7 +36,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  	if (opt->parent_classid != TC_HTB_CLASSID_ROOT) {
  		NL_SET_ERR_MSG_MOD(opt->extack, "invalid parent classid");
-@@ -2562,7 +2562,7 @@ static int airoha_tc_htb_alloc_leaf_queu
+@@ -2559,7 +2559,7 @@ static int airoha_tc_htb_alloc_leaf_queu
  	if (opt->command == TC_HTB_NODE_MODIFY)
  		return 0;
  
@@ -45,7 +45,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	if (err) {
  		airoha_qdma_set_tx_rate_limit(port, channel, 0, opt->quantum);
  		NL_SET_ERR_MSG_MOD(opt->extack,
-@@ -2754,44 +2754,51 @@ static int airoha_dev_setup_tc_block(str
+@@ -2751,44 +2751,51 @@ static int airoha_dev_setup_tc_block(str
  	}
  }
  
@@ -105,7 +105,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  	if (!test_bit(channel, port->qos_sq_bmap)) {
  		NL_SET_ERR_MSG_MOD(opt->extack, "invalid queue id");
-@@ -2803,23 +2810,23 @@ static int airoha_tc_get_htb_get_leaf_qu
+@@ -2800,23 +2807,23 @@ static int airoha_tc_get_htb_get_leaf_qu
  	return 0;
  }
  
@@ -134,7 +134,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	default:
  		return -EOPNOTSUPP;
  	}
-@@ -2837,7 +2844,7 @@ static int airoha_dev_tc_setup(struct ne
+@@ -2834,7 +2841,7 @@ static int airoha_dev_tc_setup(struct ne
  	case TC_SETUP_QDISC_ETS:
  		return airoha_tc_setup_qdisc_ets(port, type_data);
  	case TC_SETUP_QDISC_HTB:

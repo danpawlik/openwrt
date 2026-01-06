@@ -37,7 +37,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	val = (addr[0] << 16) | (addr[1] << 8) | addr[2];
  	airoha_fe_wr(eth, reg, val);
  
-@@ -1717,7 +1717,7 @@ static int airoha_dev_set_macaddr(struct
+@@ -1729,7 +1729,7 @@ static int airoha_dev_set_macaddr(struct
  	if (err)
  		return err;
  
@@ -46,15 +46,15 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  	return 0;
  }
-@@ -1784,7 +1784,7 @@ static int airoha_dev_init(struct net_de
- 	u32 pse_port, fe_cpu_port;
- 	u8 ppe_id;
+@@ -1798,7 +1798,7 @@ static int airoha_dev_init(struct net_de
+ 	struct airoha_eth *eth = port->qdma->eth;
+ 	int i;
  
 -	airoha_set_macaddr(port, netdev->dev_addr);
 +	airoha_set_macaddr(dev, netdev->dev_addr);
  
  	switch (port->id) {
- 	case 3:
+ 	case AIROHA_GDM3_IDX:
 --- a/drivers/net/ethernet/airoha/airoha_eth.h
 +++ b/drivers/net/ethernet/airoha/airoha_eth.h
 @@ -642,8 +642,10 @@ u32 airoha_rmw(void __iomem *base, u32 o
@@ -71,7 +71,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	 * phy module.
 --- a/drivers/net/ethernet/airoha/airoha_ppe.c
 +++ b/drivers/net/ethernet/airoha/airoha_ppe.c
-@@ -324,7 +324,7 @@ static int airoha_ppe_foe_entry_prepare(
+@@ -345,7 +345,7 @@ static int airoha_ppe_foe_entry_prepare(
  			/* For downlink traffic consume SRAM memory for hw
  			 * forwarding descriptors queue.
  			 */
