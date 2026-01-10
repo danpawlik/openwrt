@@ -14,7 +14,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
 
 --- a/drivers/net/phy/realtek/realtek_main.c
 +++ b/drivers/net/phy/realtek/realtek_main.c
-@@ -189,13 +189,30 @@
+@@ -198,13 +198,30 @@
  #define	RTL_MDIO_AN_EEE_ADV2			0xa6d4
  #define	RTL_MDIO_PCS_EEE_ABLE2			0xa6ec
  
@@ -52,7 +52,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  
  /* RTL8211E and RTL8211F support up to three LEDs */
  #define RTL8211x_LED_COUNT			3
-@@ -658,7 +675,7 @@ static int rtl8211f_config_clk_out(struc
+@@ -671,7 +688,7 @@ static int rtl8211f_config_clk_out(struc
  	if (!priv->disable_clk_out)
  		return 0;
  
@@ -61,16 +61,16 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		ret = phy_modify_paged(phydev, RTL8211FVD_CLKOUT_PAGE,
  				       RTL8211FVD_CLKOUT_REG,
  				       RTL8211FVD_CLKOUT_EN, 0);
-@@ -1240,7 +1257,7 @@ static int rtl822x_write_mmd(struct phy_
- static int rtl822x_probe(struct phy_device *phydev)
- {
+@@ -1262,7 +1279,7 @@ static int rtl822x_probe(struct phy_devi
+ 	phydev->priv = priv;
+ 
  	if (IS_ENABLED(CONFIG_REALTEK_PHY_HWMON) &&
 -	    phydev->phy_id != RTL_GENERIC_PHYID)
 +	    phydev->phy_id != PHYID_RTL_GENERIC)
  		return rtl822x_hwmon_init(phydev);
  
  	return 0;
-@@ -1781,14 +1798,14 @@ static bool rtlgen_supports_mmd(struct p
+@@ -1888,14 +1905,14 @@ static bool rtlgen_supports_mmd(struct p
  static int rtlgen_match_phy_device(struct phy_device *phydev,
  				   const struct phy_driver *phydrv)
  {
@@ -87,7 +87,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  	       rtlgen_supports_2_5gbps(phydev) &&
  	       rtlgen_supports_mmd(phydev);
  }
-@@ -1827,31 +1844,31 @@ static int rtlgen_is_c45_match(struct ph
+@@ -1934,31 +1951,31 @@ static int rtlgen_is_c45_match(struct ph
  static int rtl8221b_match_phy_device(struct phy_device *phydev,
  				     const struct phy_driver *phydrv)
  {
@@ -124,7 +124,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  }
  
  static int rtl_internal_nbaset_match_phy_device(struct phy_device *phydev,
-@@ -1861,11 +1878,11 @@ static int rtl_internal_nbaset_match_phy
+@@ -1968,11 +1985,11 @@ static int rtl_internal_nbaset_match_phy
  		return false;
  
  	switch (phydev->phy_id) {
@@ -141,7 +141,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		break;
  	default:
  		return false;
-@@ -1877,7 +1894,7 @@ static int rtl_internal_nbaset_match_phy
+@@ -1984,7 +2001,7 @@ static int rtl_internal_nbaset_match_phy
  static int rtl8251b_c45_match_phy_device(struct phy_device *phydev,
  					 const struct phy_driver *phydrv)
  {
@@ -150,7 +150,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  }
  
  static int rtlgen_resume(struct phy_device *phydev)
-@@ -2064,12 +2081,12 @@ static irqreturn_t rtl8221b_handle_inter
+@@ -2171,12 +2188,12 @@ static irqreturn_t rtl8221b_handle_inter
  
  static struct phy_driver realtek_drvs[] = {
  	{
@@ -165,7 +165,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8201F Fast Ethernet",
  		.config_intr	= &rtl8201_config_intr,
  		.handle_interrupt = rtl8201_handle_interrupt,
-@@ -2078,7 +2095,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2185,7 +2202,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -174,7 +174,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8208 Fast Ethernet",
  		.read_mmd	= genphy_read_mmd_unsupported,
  		.write_mmd	= genphy_write_mmd_unsupported,
-@@ -2087,7 +2104,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2194,7 +2211,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -183,7 +183,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211 Gigabit Ethernet",
  		.config_aneg	= rtl8211_config_aneg,
  		.read_mmd	= &genphy_read_mmd_unsupported,
-@@ -2095,7 +2112,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2202,7 +2219,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -192,7 +192,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211B Gigabit Ethernet",
  		.config_intr	= &rtl8211b_config_intr,
  		.handle_interrupt = rtl821x_handle_interrupt,
-@@ -2106,7 +2123,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2213,7 +2230,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -201,7 +201,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211C Gigabit Ethernet",
  		.config_init	= rtl8211c_config_init,
  		.read_mmd	= &genphy_read_mmd_unsupported,
-@@ -2114,7 +2131,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2221,7 +2238,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -210,7 +210,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211DN Gigabit Ethernet",
  		.config_intr	= rtl8211e_config_intr,
  		.handle_interrupt = rtl821x_handle_interrupt,
-@@ -2123,7 +2140,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2230,7 +2247,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -219,7 +219,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211E Gigabit Ethernet",
  		.config_init	= &rtl8211e_config_init,
  		.config_intr	= &rtl8211e_config_intr,
-@@ -2136,7 +2153,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2243,7 +2260,7 @@ static struct phy_driver realtek_drvs[]
  		.led_hw_control_get = rtl8211e_led_hw_control_get,
  		.led_hw_control_set = rtl8211e_led_hw_control_set,
  	}, {
@@ -228,7 +228,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211F Gigabit Ethernet",
  		.probe		= rtl8211f_probe,
  		.config_init	= &rtl8211f_config_init,
-@@ -2154,7 +2171,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2261,7 +2278,7 @@ static struct phy_driver realtek_drvs[]
  		.led_hw_control_get = rtl8211f_led_hw_control_get,
  		.led_hw_control_set = rtl8211f_led_hw_control_set,
  	}, {
@@ -237,25 +237,25 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8211F-VD Gigabit Ethernet",
  		.probe		= rtl821x_probe,
  		.config_init	= &rtl8211f_config_init,
-@@ -2201,7 +2218,7 @@ static struct phy_driver realtek_drvs[]
- 		.read_page	= rtl821x_read_page,
- 		.write_page	= rtl821x_write_page,
+@@ -2314,7 +2331,7 @@ static struct phy_driver realtek_drvs[]
+ 		.read_mmd	= rtl822xb_read_mmd,
+ 		.write_mmd	= rtl822xb_write_mmd,
  	}, {
 -		PHY_ID_MATCH_EXACT(0x001cc838),
 +		PHY_ID_MATCH_EXACT(PHYID_RTL8226),
  		.name		= "RTL8226-CG 2.5Gbps PHY",
- 		.soft_reset     = rtl822x_c45_soft_reset,
+ 		.soft_reset	= rtl822x_c45_soft_reset,
  		.get_features	= rtl822x_c45_get_features,
-@@ -2211,7 +2228,7 @@ static struct phy_driver realtek_drvs[]
- 		.suspend        = genphy_c45_pma_suspend,
- 		.resume         = rtlgen_c45_resume,
+@@ -2328,7 +2345,7 @@ static struct phy_driver realtek_drvs[]
+ 		.read_mmd	= rtl822xb_read_mmd,
+ 		.write_mmd	= rtl822xb_write_mmd,
  	}, {
 -		PHY_ID_MATCH_EXACT(0x001cc848),
 +		PHY_ID_MATCH_EXACT(PHYID_RTL8226B),
  		.name		= "RTL8226B-CG_RTL8221B-CG 2.5Gbps PHY",
- 		.soft_reset     = genphy_soft_reset,
+ 		.soft_reset	= genphy_soft_reset,
  		.get_features	= rtl822x_get_features,
-@@ -2305,7 +2322,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2442,7 +2459,7 @@ static struct phy_driver realtek_drvs[]
  		.read_mmd	= rtl822x_read_mmd,
  		.write_mmd	= rtl822x_write_mmd,
  	}, {
@@ -263,8 +263,8 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
 +		PHY_ID_MATCH_EXACT(PHYID_RTL8224),
  		.name		= "RTL8224 2.5Gbps PHY",
  		.flags		= PHY_POLL_CABLE_TEST,
- 		.get_features   = rtl822x_c45_get_features,
-@@ -2316,7 +2333,7 @@ static struct phy_driver realtek_drvs[]
+ 		.get_features	= rtl822x_c45_get_features,
+@@ -2453,7 +2470,7 @@ static struct phy_driver realtek_drvs[]
  		.cable_test_start = rtl8224_cable_test_start,
  		.cable_test_get_status = rtl8224_cable_test_get_status,
  	}, {
@@ -273,7 +273,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8366RB Gigabit Ethernet",
  		.config_init	= &rtl8366rb_config_init,
  		/* These interrupts are handled by the irq controller
-@@ -2329,8 +2346,8 @@ static struct phy_driver realtek_drvs[]
+@@ -2466,8 +2483,8 @@ static struct phy_driver realtek_drvs[]
  		.suspend	= genphy_suspend,
  		.resume		= genphy_resume,
  	}, {
@@ -284,7 +284,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.features	= PHY_BASIC_T1_FEATURES,
  		.config_init	= rtl9000a_config_init,
  		.config_aneg	= rtl9000a_config_aneg,
-@@ -2342,7 +2359,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2479,7 +2496,7 @@ static struct phy_driver realtek_drvs[]
  		.read_page	= rtl821x_read_page,
  		.write_page	= rtl821x_write_page,
  	}, {
@@ -293,7 +293,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8365MB-VC Gigabit Ethernet",
  		/* Interrupt handling analogous to RTL8366RB */
  		.config_intr	= genphy_no_config_intr,
-@@ -2350,7 +2367,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2487,7 +2504,7 @@ static struct phy_driver realtek_drvs[]
  		.suspend	= genphy_suspend,
  		.resume		= genphy_resume,
  	}, {
@@ -302,7 +302,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  		.name		= "RTL8366S Gigabit Ethernet",
  		.suspend	= genphy_suspend,
  		.resume		= genphy_resume,
-@@ -2362,7 +2379,7 @@ static struct phy_driver realtek_drvs[]
+@@ -2499,7 +2516,7 @@ static struct phy_driver realtek_drvs[]
  module_phy_driver(realtek_drvs);
  
  static const struct mdio_device_id __maybe_unused realtek_tbl[] = {

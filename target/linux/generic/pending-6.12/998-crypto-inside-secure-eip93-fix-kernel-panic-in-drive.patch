@@ -13,11 +13,9 @@ Signed-off-by: Aleksander Jan Bajkowski <olek2@wp.pl>
  drivers/crypto/inside-secure/eip93/eip93-main.c | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/drivers/crypto/inside-secure/eip93/eip93-main.c b/drivers/crypto/inside-secure/eip93/eip93-main.c
-index 0b38a567da0e..3cdc3308dcac 100644
 --- a/drivers/crypto/inside-secure/eip93/eip93-main.c
 +++ b/drivers/crypto/inside-secure/eip93/eip93-main.c
-@@ -90,7 +90,7 @@ static void eip93_unregister_algs(unsigned int i)
+@@ -90,7 +90,7 @@ static void eip93_unregister_algs(unsign
  			crypto_unregister_aead(&eip93_algs[j]->alg.aead);
  			break;
  		case EIP93_ALG_TYPE_HASH:
@@ -26,6 +24,3 @@ index 0b38a567da0e..3cdc3308dcac 100644
  			break;
  		}
  	}
--- 
-2.47.3
-

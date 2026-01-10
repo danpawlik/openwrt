@@ -15,21 +15,16 @@ Signed-off-by: Aleksander Jan Bajkowski <olek2@wp.pl>
  crypto/testmgr.c | 4 ++++
  1 file changed, 4 insertions(+)
 
-diff --git a/crypto/testmgr.c b/crypto/testmgr.c
-index a302be53896d..5bae4871690f 100644
 --- a/crypto/testmgr.c
 +++ b/crypto/testmgr.c
-@@ -4137,6 +4137,10 @@ static const struct alg_test_desc alg_test_descs[] = {
- 		.suite = {
+@@ -4426,6 +4426,10 @@ static const struct alg_test_desc alg_te
  			.aead = __VECS(hmac_sha224_des3_ede_cbc_tv_temp)
  		}
-+	}, {
+ 	}, {
 +		.alg = "authenc(hmac(sha224),rfc3686(ctr(aes)))",
 +		.test = alg_test_null,
 +		.fips_allowed = 1,
- 	}, {
++	}, {
  		.alg = "authenc(hmac(sha256),cbc(aes))",
- 		.generic_driver = "authenc(hmac-sha256-lib,cbc(aes-generic))",
--- 
-2.47.3
-
+ 		.test = alg_test_aead,
+ 		.fips_allowed = 1,
