@@ -56,7 +56,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  
  #include "realtek.h"
  
-@@ -191,6 +192,7 @@
+@@ -200,6 +201,7 @@
  
  #define PHYID_RTL_GENERIC			0x001cc800
  #define PHYID_RTL8201CP			0x00008201
@@ -64,7 +64,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  #define PHYID_RTL8201F				0x001cc816
  #define PHYID_RTL8226				0x001cc838
  #define PHYID_RTL8221B				0x001cc840
-@@ -212,11 +214,23 @@
+@@ -221,11 +223,23 @@
  #define PHYID_RTL8366S				0x001cc960
  #define PHYID_RTL8366RB			0x001cc961
  #define PHYID_RTL8224				0x001ccad0
@@ -88,7 +88,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  MODULE_DESCRIPTION("Realtek PHY driver");
  MODULE_AUTHOR("Johnson Leung");
  MODULE_LICENSE("GPL");
-@@ -1897,6 +1911,125 @@ static int rtl8251b_c45_match_phy_device
+@@ -2004,6 +2018,125 @@ static int rtl8251b_c45_match_phy_device
  	return rtlgen_is_c45_match(phydev, PHYID_RTL8251B, true);
  }
  
@@ -214,7 +214,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  static int rtlgen_resume(struct phy_device *phydev)
  {
  	int ret = genphy_resume(phydev);
-@@ -2079,6 +2212,416 @@ static irqreturn_t rtl8221b_handle_inter
+@@ -2186,6 +2319,416 @@ static irqreturn_t rtl8221b_handle_inter
  	return IRQ_HANDLED;
  }
  
@@ -631,7 +631,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  static struct phy_driver realtek_drvs[] = {
  	{
  		PHY_ID_MATCH_EXACT(PHYID_RTL8201CP),
-@@ -2373,6 +2916,111 @@ static struct phy_driver realtek_drvs[]
+@@ -2510,6 +3053,111 @@ static struct phy_driver realtek_drvs[]
  		.resume		= genphy_resume,
  		.read_mmd	= genphy_read_mmd_unsupported,
  		.write_mmd	= genphy_write_mmd_unsupported,
