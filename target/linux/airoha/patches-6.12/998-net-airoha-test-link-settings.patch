@@ -1,0 +1,25 @@
+From 7940efdcb92233f55beafb63f58d9a38a51bdede Mon Sep 17 00:00:00 2001
+From: Aleksander Jan Bajkowski <olek2@wp.pl>
+Date: Sat, 10 Jan 2026 17:29:28 +0100
+Subject: [PATCH] net: airoha: test link settings
+
+Signed-off-by: Aleksander Jan Bajkowski <olek2@wp.pl>
+---
+ drivers/net/ethernet/airoha/airoha_eth.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/ethernet/airoha/airoha_eth.c b/drivers/net/ethernet/airoha/airoha_eth.c
+index 315d97036ac1..00cae2833f09 100644
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -2803,6 +2803,7 @@ static const struct ethtool_ops airoha_ethtool_ops = {
+ 	.get_drvinfo		= airoha_ethtool_get_drvinfo,
+ 	.get_eth_mac_stats      = airoha_ethtool_get_mac_stats,
+ 	.get_rmon_stats		= airoha_ethtool_get_rmon_stats,
++	.get_link_ksettings	= phy_ethtool_get_link_ksettings,
+ 	.get_link		= ethtool_op_get_link,
+ };
+ 
+-- 
+2.47.3
+
