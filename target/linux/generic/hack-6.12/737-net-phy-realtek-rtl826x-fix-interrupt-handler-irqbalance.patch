@@ -1,0 +1,80 @@
+From: Ryan Chen <rchen14b@gmail.com>
+Date: Thu, 9 Jan 2026 00:00:00 +0000
+Subject: [PATCH] net: phy: realtek: rtl826x: fix interrupt handler for
+ irqbalance compatibility
+
+The rtl826x_handle_intr() function returns IRQ_NONE when MDIO operations
+fail. This causes problems when irqbalance migrates the IRQ to another
+CPU, as MDIO bus operations can transiently fail during migration.
+
+When IRQ_NONE is returned repeatedly, the kernel's spurious interrupt
+detection triggers "irq XX: nobody cared" and disables the IRQ entirely,
+breaking PHY link change detection.
+
+Fix this by:
+1. Always returning IRQ_HANDLED since the interrupt definitely came from
+   this PHY (it's level-triggered and asserts until acknowledged)
+2. Logging MDIO failures for debugging rather than bailing out
+3. Continuing to process what we can even after partial failures
+
+This ensures the PHY interrupt remains functional even with irqbalance
+enabled, while still properly handling link change and PME events when
+MDIO operations succeed.
+
+Signed-off-by: Ryan Chen <rchen14b@gmail.com>
+---
+ drivers/net/phy/realtek/realtek_main.c | 35 ++++++++++++++++++++------
+ 1 file changed, 27 insertions(+), 8 deletions(-)
+
+--- a/drivers/net/phy/realtek/realtek_main.c
++++ b/drivers/net/phy/realtek/realtek_main.c
+@@ -2356,14 +2356,24 @@ static int rtl826x_config_intr(struct ph
+ 
+ static irqreturn_t rtl826x_handle_intr(struct phy_device *phydev)
+ {
+-	u32 data;
++	int data;
+ 
+ 	data = phy_read_mmd(phydev, MDIO_MMD_VEND2, RTL826X_VND2_INSR);
+-	if (data < 0)
+-		return IRQ_NONE;
++	if (data < 0) {
++		/*
++		 * MDIO read can fail transiently when irqbalance migrates
++		 * the IRQ to another CPU. Return IRQ_HANDLED to prevent
++		 * the kernel from disabling this IRQ due to "nobody cared".
++		 * The interrupt is level-triggered and will re-assert if
++		 * there's a real pending event.
++		 */
++		phydev_dbg(phydev, "INSR read failed: %d\n", data);
++		return IRQ_HANDLED;
++	}
+ 
++	/* Clear interrupt status - continue even if this fails */
+ 	if (phy_modify_mmd(phydev, MDIO_MMD_VEND1, 0x2DC, GENMASK(15, 0), 0xFF) < 0)
+-		return IRQ_NONE;
++		phydev_dbg(phydev, "Failed to clear interrupt status\n");
+ 
+ 	if (data & RTL826X_VND2_INER_LINK_STATUS) {
+ 		phydev_dbg(phydev, "RTK_PHY_INTR_LINK_CHANGE\n");
+@@ -2373,11 +2383,15 @@ static irqreturn_t rtl826x_handle_intr(s
+ 	if (data & RTL826X_VND2_INER_PME) {
+ 		phydev_dbg(phydev, "RTK_PHY_INTR_WOL\n");
+ 
+-		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 0) < 0)
+-			return IRQ_NONE;
+-
+-		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 1 << 15) < 0)
+-			return IRQ_NONE;
++		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 0) < 0) {
++			phydev_dbg(phydev, "Failed to clear PME status (step 1)\n");
++			return IRQ_HANDLED;
++		}
++
++		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 1 << 15) < 0) {
++			phydev_dbg(phydev, "Failed to clear PME status (step 2)\n");
++			return IRQ_HANDLED;
++		}
+ 	}
+ 
+ 	return IRQ_HANDLED;
