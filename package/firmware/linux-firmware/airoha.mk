@@ -22,6 +22,8 @@ define Package/airoha-en7581-npu-firmware/install
 	$(CP) \
 		$(PKG_BUILD_DIR)/airoha/en7581_npu_data.bin \
 		$(PKG_BUILD_DIR)/airoha/en7581_npu_rv32.bin \
+		$(PKG_BUILD_DIR)/airoha/en7581_MT7996_npu_data.bin \
+		$(PKG_BUILD_DIR)/airoha/en7581_MT7996_npu_rv32.bin \
 		$(1)/lib/firmware/airoha
 endef
 
