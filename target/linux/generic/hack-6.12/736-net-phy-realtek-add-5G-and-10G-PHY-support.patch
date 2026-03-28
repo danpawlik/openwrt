@@ -215,7 +215,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  static int rtlgen_resume(struct phy_device *phydev)
  {
  	int ret = genphy_resume(phydev);
-@@ -2208,6 +2341,422 @@ static int rtlgen_sfp_config_aneg(struct
+@@ -2208,6 +2341,436 @@ static int rtlgen_sfp_config_aneg(struct
  	return 0;
  }
  
@@ -449,11 +449,21 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
 +	int data;
 +
 +	data = phy_read_mmd(phydev, MDIO_MMD_VEND2, RTL826X_VND2_INSR);
-+	if (data < 0)
-+		return IRQ_NONE;
++	if (data < 0) {
++		/*
++		 * MDIO read can fail transiently when irqbalance migrates
++		 * the IRQ to another CPU. Return IRQ_HANDLED to prevent
++		 * the kernel from disabling this IRQ due to "nobody cared".
++		 * The interrupt is level-triggered and will re-assert if
++		 * there's a real pending event.
++		 */
++		phydev_dbg(phydev, "INSR read failed: %d\n", data);
++		return IRQ_HANDLED;
++	}
 +
++	/* Clear interrupt status - continue even if this fails */
 +	if (phy_modify_mmd(phydev, MDIO_MMD_VEND1, 0x2DC, GENMASK(15, 0), 0xFF) < 0)
-+		return IRQ_NONE;
++		phydev_dbg(phydev, "Failed to clear interrupt status\n");
 +
 +	if (data & RTL826X_VND2_INER_LINK_STATUS) {
 +		phydev_dbg(phydev, "RTK_PHY_INTR_LINK_CHANGE\n");
@@ -463,11 +473,15 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
 +	if (data & RTL826X_VND2_INER_PME) {
 +		phydev_dbg(phydev, "RTK_PHY_INTR_WOL\n");
 +
-+		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 0) < 0)
-+			return IRQ_NONE;
++		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 0) < 0) {
++			phydev_dbg(phydev, "Failed to clear PME status (step 1)\n");
++			return IRQ_HANDLED;
++		}
 +
-+		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 1 << 15) < 0)
-+			return IRQ_NONE;
++		if (phy_modify_mmd(phydev, MDIO_MMD_VEND2, 0xD8A2, BIT(15), 1 << 15) < 0) {
++			phydev_dbg(phydev, "Failed to clear PME status (step 2)\n");
++			return IRQ_HANDLED;
++		}
 +	}
 +
 +	return IRQ_HANDLED;
@@ -638,7 +652,7 @@ Signed-off-by: Balázs Triszka <info@balika011.hu>
  static struct phy_driver realtek_drvs[] = {
  	{
  		PHY_ID_MATCH_EXACT(0x00008201),
-@@ -2514,6 +3063,108 @@ static struct phy_driver realtek_drvs[]
+@@ -2514,6 +3077,108 @@ static struct phy_driver realtek_drvs[]
  		.resume		= genphy_resume,
  		.read_mmd	= genphy_read_mmd_unsupported,
  		.write_mmd	= genphy_write_mmd_unsupported,
