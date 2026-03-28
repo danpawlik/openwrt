@@ -353,7 +353,7 @@
 			reset-assert-us = <200000>;
 			reset-deassert-us = <200000>;
 			interrupt-parent = <&en7581_pinctrl>;
-			interrupts = <22 IRQ_TYPE_LEVEL_LOW>;
+			interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
 			realtek,pnswap-tx;
 			realtek,pnswap-rx;
 		};
@@ -365,7 +365,7 @@
 			reset-assert-us = <200000>;
 			reset-deassert-us = <200000>;
 			interrupt-parent = <&en7581_pinctrl>;
-			interrupts = <23 IRQ_TYPE_LEVEL_LOW>;
+			interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
 			realtek,pnswap-tx;
 			realtek,pnswap-rx;
 		};
