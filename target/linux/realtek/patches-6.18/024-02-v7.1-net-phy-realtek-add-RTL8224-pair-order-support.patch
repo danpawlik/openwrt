@@ -37,7 +37,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  
 --- a/drivers/net/phy/realtek/realtek_main.c
 +++ b/drivers/net/phy/realtek/realtek_main.c
-@@ -19,6 +19,7 @@
+@@ -20,6 +20,7 @@
  #include <linux/string_choices.h>
  #include <net/phy/realtek_phy.h>
  
@@ -45,7 +45,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  #include "realtek.h"
  
  #define RTL8201F_IER				0x13
-@@ -175,6 +176,8 @@
+@@ -176,6 +177,8 @@
  #define RTL8221B_PHYCR1_ALDPS_XTAL_OFF_EN	BIT(12)
  #define RTL8221B_PHYCR1_PHYAD_0_EN		BIT(13)
  

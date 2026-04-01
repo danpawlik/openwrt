@@ -1,6 +1,6 @@
 --- a/drivers/net/phy/realtek/realtek_main.c
 +++ b/drivers/net/phy/realtek/realtek_main.c
-@@ -171,6 +171,41 @@
+@@ -172,6 +172,41 @@
  
  #define RTL8224_SRAM_RTCT_LEN(pair)		(0x8028 + (pair) * 4)
  
