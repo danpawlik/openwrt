@@ -298,7 +298,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	dev->hw_features = AIROHA_HW_FEATURES | NETIF_F_LRO;
 +	dev->features |= AIROHA_HW_FEATURES;
 +	dev->vlan_features = AIROHA_HW_FEATURES;
- 	dev->dev.of_node = np;
+ 	device_set_node(&dev->dev, of_fwnode_handle(np));
  	SET_NETDEV_DEV(dev, eth->dev);
  
 --- a/drivers/net/ethernet/airoha/airoha_eth.h
