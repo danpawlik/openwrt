@@ -1,9 +1,10 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Hauke Mehrtens <hauke@hauke-m.de>
-Date: Mon, 15 Dec 2025 01:45:07 +0100
-Subject: Revert "MIPS: mm: kmalloc tlb_vpn array to avoid stack overflow"
+From f68279fdedbd1824bc664861b920a63fd98187e1 Mon Sep 17 00:00:00 2001
+From: John Audia <therealgraysky@proton.me>
+Date: Mon, 13 Apr 2026 07:33:41 -0400
+Subject: [PATCH] Revert "MIPS: mm: kmalloc tlb_vpn array to avoid stack
+ overflow"
 
-This reverts commit 63a93d1cd6077d79735f804f5a4957bfb240280c.
+This reverts commit 841ecc979b18d3227fad5e2d6a1e6f92688776b5.
 ---
  arch/mips/mm/tlb-r4k.c | 18 ++----------------
  1 file changed, 2 insertions(+), 16 deletions(-)
@@ -39,7 +40,7 @@ This reverts commit 63a93d1cd6077d79735f804f5a4957bfb240280c.
  
 -	tlb_vpn_size = tlbsize * sizeof(*tlb_vpns);
 -	tlb_vpns = (use_slab ?
--		    kmalloc(tlb_vpn_size, GFP_KERNEL) :
+-		    kmalloc(tlb_vpn_size, GFP_ATOMIC) :
 -		    memblock_alloc_raw(tlb_vpn_size, sizeof(*tlb_vpns)));
 -	if (WARN_ON(!tlb_vpns))
 -		return; /* Pray local_flush_tlb_all() is good enough. */
