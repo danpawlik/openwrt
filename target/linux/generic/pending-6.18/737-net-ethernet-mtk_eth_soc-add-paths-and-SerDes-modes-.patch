@@ -306,29 +306,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
  	/* Enable SGMII */
  	if (interface == PHY_INTERFACE_MODE_SGMII ||
  	    phy_interface_mode_is_8023z(interface))
-@@ -861,7 +935,7 @@ static void mtk_xgdm_mac_link_up(struct
- 				 int speed, int duplex, bool tx_pause,
- 				 bool rx_pause)
- {
--	u32 mcr;
-+	u32 mcr, force_link = 0;
- 
- 	if (mac->id == MTK_GMAC1_ID)
- 		return;
-@@ -872,8 +946,10 @@ static void mtk_xgdm_mac_link_up(struct
- 	mtk_m32(mac->hw, XMAC_GLB_CNTCLR, XMAC_GLB_CNTCLR,
- 		MTK_XMAC_CNT_CTRL(mac->id));
- 
--	mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id),
--		MTK_XGMAC_FORCE_LINK(mac->id), MTK_XGMAC_STS(mac->id));
-+	if (mac->interface == PHY_INTERFACE_MODE_INTERNAL || mac->id == MTK_GMAC3_ID)
-+		force_link = MTK_XGMAC_FORCE_LINK(mac->id);
-+
-+	mtk_m32(mac->hw, MTK_XGMAC_FORCE_LINK(mac->id), force_link, MTK_XGMAC_STS(mac->id));
- 
- 	mcr = mtk_r32(mac->hw, MTK_XMAC_MCR(mac->id));
- 	mcr &= ~(XMAC_MCR_FORCE_TX_FC | XMAC_MCR_FORCE_RX_FC |
-@@ -903,6 +979,10 @@ static void mtk_mac_link_up(struct phyli
+@@ -903,6 +935,10 @@ static void mtk_mac_link_up(struct phyli
  	else
  		mtk_gdm_mac_link_up(mac, phy, mode, interface, speed, duplex,
  				    tx_pause, rx_pause);
