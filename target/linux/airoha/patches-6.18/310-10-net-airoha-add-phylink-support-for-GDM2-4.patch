@@ -255,6 +255,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +++ b/drivers/net/ethernet/airoha/airoha_eth.h
 @@ -540,6 +540,9 @@ struct airoha_gdm_port {
  	int id;
+ 	int nbq;
  
 +	struct phylink *phylink;
 +	struct phylink_config phylink_config;
