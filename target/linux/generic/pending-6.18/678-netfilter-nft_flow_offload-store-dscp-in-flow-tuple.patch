@@ -1,0 +1,64 @@
+From: Lorenzo Bianconi <lorenzo@kernel.org>
+Subject: [PATCH] netfilter: nft_flow_offload: store DSCP in flow tuple
+
+Record per-direction DSCP in the flow tuple when offloading, so
+nf_flow_table can match and restore TOS/DSCP on the fastpath.
+
+Requires 675-02..675-06 and 677. Ported from openwrt/openwrt#23423.
+
+Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
+---
+ net/netfilter/nft_flow_offload.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+--- a/net/netfilter/nft_flow_offload.c
++++ b/net/netfilter/nft_flow_offload.c
+@@ -8,8 +8,10 @@
+ #include <linux/spinlock.h>
+ #include <linux/netfilter/nf_conntrack_common.h>
+ #include <linux/netfilter/nf_tables.h>
++#include <net/dsfield.h>
+ #include <net/ip.h>
+ #include <net/flow.h>
++#include <net/inet_dscp.h>
+ #include <net/route.h>
+ #include <net/ip6_route.h>
+ #include <net/netfilter/nf_tables.h>
+@@ -442,6 +444,27 @@ nft_flow_route_bridging(const struct nft_pktinfo *pkt,
+ 	return 0;
+ }
+ 
++static void nft_flow_set_dscp(const struct nft_pktinfo *pkt,
++			      struct flow_offload *flow,
++			      enum ip_conntrack_dir dir)
++{
++	struct flow_offload_tuple *tuple = &flow->tuplehash[dir].tuple;
++	struct sk_buff *skb = pkt->skb;
++
++	switch (skb->protocol) {
++	case htons(ETH_P_IP):
++		tuple->dscp = FIELD_GET(INET_DSCP_MASK,
++					ipv4_get_dsfield(ip_hdr(skb)));
++		break;
++	case htons(ETH_P_IPV6):
++		tuple->dscp = FIELD_GET(INET_DSCP_MASK,
++					ipv6_get_dsfield(ipv6_hdr(skb)));
++		break;
++	default:
++		break;
++	}
++}
++
+ static bool nft_flow_offload_skip(struct sk_buff *skb, int family)
+ {
+ 	if (skb_sec_path(skb))
+@@ -539,6 +562,9 @@ static void nft_flow_offload_eval(const struct nft_expr *expr,
+ 	if (!flow)
+ 		goto err_flow_alloc;
+ 
++	nft_flow_set_dscp(pkt, flow, dir);
++	nft_flow_set_dscp(pkt, flow, !dir);
++
+ 	flow_offload_route_init(flow, &route);
+ 	if (tcph)
+ 		flow_offload_ct_tcp(ct);

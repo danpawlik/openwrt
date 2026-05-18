@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 From b9870ade9498f4119d3f8f8368fcd13e1fa0c7c9 Mon Sep 17 00:00:00 2001
 Message-ID: <b9870ade9498f4119d3f8f8368fcd13e1fa0c7c9.1779086987.git.lorenzo@kernel.org>
 In-Reply-To: <6408cdca652b1f85e5b8582c283203d11f4dedcb.1779086987.git.lorenzo@kernel.org>
@@ -6,10 +7,19 @@ From: Lorenzo Bianconi <lorenzo@kernel.org>
 Date: Mon, 18 May 2026 08:36:20 +0200
 Subject: [PATCH net-next 2/2] net: airoha: Set hw QoS parameter according to
  the packet dscp
+=======
+From: Lorenzo Bianconi <lorenzo@kernel.org>
+Subject: [PATCH] net: airoha: Set hw QoS parameter according to the packet dscp
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
 
 Introduce the capability to hw offload via netfilter flowtable APIs the
 IP TOS info in order to configure hw queue and dscp field.
 
+<<<<<<< HEAD
+=======
+Ported from openwrt/openwrt#23423 for Linux 6.18 (airoha_ppe.c).
+
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
 Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 ---
  drivers/net/ethernet/airoha/airoha_ppe.c | 24 ++++++++++++++++++------
@@ -25,7 +35,11 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  #include "airoha_regs.h"
  #include "airoha_eth.h"
+<<<<<<< HEAD
 @@ -298,7 +299,7 @@ static int airoha_ppe_foe_entry_prepare(
+=======
+@@ -244,7 +245,7 @@ static int airoha_ppe_foe_entry_prepare(struct airoha_eth *eth,
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
  					struct airoha_foe_entry *hwe,
  					struct net_device *dev, int type,
  					struct airoha_flow_data *data,
@@ -34,31 +48,56 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  {
  	u32 qdata = FIELD_PREP(AIROHA_FOE_SHAPER_ID, 0x7f), ports_pad, val;
  	int wlan_etype = -EINVAL, dsa_port = airoha_get_dsa_port(&dev);
+<<<<<<< HEAD
 @@ -331,7 +332,7 @@ static int airoha_ppe_foe_entry_prepare(
  						info.wcid);
  		} else {
  			struct airoha_gdm_port *port = netdev_priv(dev);
 -			u8 pse_port, channel;
+=======
+@@ -277,7 +278,7 @@ static int airoha_ppe_foe_entry_prepare(struct airoha_eth *eth,
+ 						info.wcid);
+ 		} else {
+ 			struct airoha_gdm_port *port = netdev_priv(dev);
+-			u8 pse_port;
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
 +			u8 pse_port, channel, priority;
  
  			if (!airoha_is_valid_gdm_port(eth, port))
  				return -EINVAL;
+<<<<<<< HEAD
 @@ -350,9 +351,13 @@ static int airoha_ppe_foe_entry_prepare(
  			 */
  			channel = dsa_port >= 0 ? dsa_port : port->id;
  			channel = channel % AIROHA_NUM_QOS_CHANNELS;
 -			qdata |= FIELD_PREP(AIROHA_FOE_CHANNEL, channel);
+=======
+@@ -290,7 +291,15 @@ static int airoha_ppe_foe_entry_prepare(struct airoha_eth *eth,
+ 					       * loopback
+ 					       */
+ 
++			channel = dsa_port >= 0 ? dsa_port : port->id;
++			channel = channel % AIROHA_NUM_QOS_CHANNELS;
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
 +			priority = rt_tos2priority(dsfield);
 +			priority = priority % AIROHA_NUM_QOS_QUEUES;
 +			qdata |= FIELD_PREP(AIROHA_FOE_CHANNEL, channel) |
 +				 FIELD_PREP(AIROHA_FOE_QID, priority);
+<<<<<<< HEAD
  
+=======
++
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
  			val |= FIELD_PREP(AIROHA_FOE_IB2_PSE_PORT, pse_port) |
 +			       FIELD_PREP(AIROHA_FOE_IB2_DSCP, dsfield) |
  			       AIROHA_FOE_IB2_PSE_QOS;
  			/* For downlink traffic consume SRAM memory for hw
  			 * forwarding descriptors queue.
+<<<<<<< HEAD
 @@ -1044,9 +1049,9 @@ static int airoha_ppe_flow_offload_repla
+=======
+@@ -946,9 +955,9 @@ static int airoha_ppe_flow_offload_replace(struct airoha_eth *eth,
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
  	struct net_device *odev = NULL;
  	struct flow_action_entry *act;
  	struct airoha_foe_entry hwe;
@@ -69,7 +108,11 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  	if (rhashtable_lookup(&eth->flow_table, &f->cookie,
  			      airoha_flow_table_params))
+<<<<<<< HEAD
 @@ -1076,6 +1081,13 @@ static int airoha_ppe_flow_offload_repla
+=======
+@@ -978,6 +987,13 @@ static int airoha_ppe_flow_offload_replace(struct airoha_eth *eth,
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
  		return -EOPNOTSUPP;
  	}
  
@@ -83,7 +126,11 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	switch (addr_type) {
  	case 0:
  		offload_type = PPE_PKT_TYPE_BRIDGE;
+<<<<<<< HEAD
 @@ -1141,7 +1153,7 @@ static int airoha_ppe_flow_offload_repla
+=======
+@@ -1042,7 +1058,7 @@ static int airoha_ppe_flow_offload_replace(struct airoha_eth *eth,
+>>>>>>> 5e1cdf12b6 (Port DSCP flowtable offload from openwrt/openwrt#23423 for 6.18)
  		return -EINVAL;
  
  	err = airoha_ppe_foe_entry_prepare(eth, &hwe, odev, offload_type,
