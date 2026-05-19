@@ -12,7 +12,6 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  3 files changed, 208 insertions(+), 15 deletions(-)
 
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
-+++ b/drivers/net/ethernet/airoha/airoha_eth.c
 @@ -13,6 +13,7 @@
  #include <net/dst_metadata.h>
  #include <net/page_pool/helpers.h>
@@ -252,7 +251,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  static netdev_tx_t airoha_dev_xmit(struct sk_buff *skb,
  				   struct net_device *dev)
  {
-@@ -2931,6 +3083,7 @@ static const struct net_device_ops airoh
+@@ -2918,6 +3070,7 @@ static const struct net_device_ops airoh
  	.ndo_stop		= airoha_dev_stop,
  	.ndo_change_mtu		= airoha_dev_change_mtu,
  	.ndo_select_queue	= airoha_dev_select_queue,
@@ -260,7 +259,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	.ndo_start_xmit		= airoha_dev_xmit,
  	.ndo_get_stats64        = airoha_dev_get_stats64,
  	.ndo_set_mac_address	= airoha_dev_set_macaddr,
-@@ -3153,12 +3306,9 @@ static int airoha_alloc_gdm_port(struct
+@@ -3142,12 +3149,9 @@ static int airoha_alloc_gdm_port(struct
  	dev->ethtool_ops = &airoha_ethtool_ops;
  	dev->max_mtu = AIROHA_MAX_MTU;
  	dev->watchdog_timeo = 5 * HZ;
@@ -273,11 +272,10 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	dev->hw_features = AIROHA_HW_FEATURES | NETIF_F_LRO;
 +	dev->features |= AIROHA_HW_FEATURES;
 +	dev->vlan_features = AIROHA_HW_FEATURES;
- 	dev->dev.of_node = np;
+ 	device_set_node(&dev->dev, of_fwnode_handle(np));
  	SET_NETDEV_DEV(dev, eth->dev);
  
 --- a/drivers/net/ethernet/airoha/airoha_eth.h
-+++ b/drivers/net/ethernet/airoha/airoha_eth.h
 @@ -43,6 +43,17 @@
  	 (_n) == 15 ? 128 :		\
  	 (_n) ==  0 ? 1024 : 16)
@@ -316,7 +314,6 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  bool airoha_is_valid_gdm_port(struct airoha_eth *eth,
  			      struct airoha_gdm_port *port);
 --- a/drivers/net/ethernet/airoha/airoha_regs.h
-+++ b/drivers/net/ethernet/airoha/airoha_regs.h
 @@ -122,6 +122,20 @@
  #define CDM_CRSN_QSEL_REASON_MASK(_n)	\
  	GENMASK(4 + (((_n) % 4) << 3),	(((_n) % 4) << 3))
