@@ -1,0 +1,356 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Date: Sat, 23 May 2026 10:00:00 +0200
+Subject: [PATCH] net: airoha: ppe: add roaming handler
+
+Add a PPE roaming handler that listens for RTM_NEWNEIGH netlink events
+on wireless bridge interfaces. When a WiFi station roams between bands
+or re-associates, it performs a three-stage teardown:
+
+1. Invalidates hardware FOE entries (BIND + UNBIND) for the roaming
+   MAC, committed to SRAM where needed
+2. Detaches matching L3/L4 software flow entries from foe_flow so they
+   cannot be re-committed by airoha_ppe_foe_insert_entry() when the
+   PPE auto-creates new UNBIND entries
+3. Removes matching L2 bridge flow parents from l2_flows and
+   flow_table, including all their subflows. This is the critical
+   step for bridger-originated flows which are L2 (PPE_PKT_TYPE_BRIDGE)
+   and keyed by MAC pair in l2_flows
+
+Without stage 3, the PPE hardware auto-learns new UNBIND entries after
+invalidation, and airoha_ppe_foe_insert_entry() looks up the stale L2
+parent in l2_flows, creates subflows with the old (wrong) redirect
+direction, and re-establishes hardware offload to the old wireless
+interface -- defeating the hardware invalidation.
+
+Also adds a bounds check in airoha_ppe_foe_get_entry_locked() for
+hash values >= num_entries (including the 0xffff sentinel) to prevent
+out-of-bounds access from the stats path after detach.
+
+This is the Airoha equivalent of the MediaTek PPE roaming handler
+(mtk_ppe: add roaming handler by Bo-Cun Chen).
+
+Co-authored-by: AI Assistant (Cursor) <noreply@cursor.com>
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/net/ethernet/airoha/airoha_eth.h |   5 +
+ drivers/net/ethernet/airoha/airoha_ppe.c | 258 ++++++++++++++++++++++
+ 2 files changed, 263 insertions(+)
+
+--- a/drivers/net/ethernet/airoha/airoha_eth.h
++++ b/drivers/net/ethernet/airoha/airoha_eth.h
+@@ -563,6 +563,9 @@ struct airoha_eth {
+ 
+ 	struct airoha_ppe *ppe;
+ 	struct rhashtable flow_table;
++	struct socket *ppe_roam_sock;
++	struct work_struct ppe_roam_work;
++	unsigned char ppe_roam_buf[1024];
+ 
+ 	struct reset_control_bulk_data rsts[AIROHA_MAX_NUM_RSTS];
+ 	struct reset_control_bulk_data *xsi_rsts;
+@@ -716,6 +719,8 @@ int airoha_ppe_init(struct airoha_eth *e
+ void airoha_ppe_deinit(struct airoha_eth *eth);
+ void airoha_ppe_init_upd_mem(struct airoha_gdm_dev *dev, const u8 *addr);
+ u32 airoha_ppe_get_total_num_entries(struct airoha_ppe *ppe);
++int airoha_ppe_roaming_start(struct airoha_eth *eth);
++void airoha_ppe_roaming_stop(struct airoha_eth *eth);
+ struct airoha_foe_entry *airoha_ppe_foe_get_entry(struct airoha_ppe *ppe,
+ 						  u32 hash);
+ void airoha_ppe_foe_entry_get_stats(struct airoha_ppe *ppe, u32 hash,
+--- a/drivers/net/ethernet/airoha/airoha_ppe.c
++++ b/drivers/net/ethernet/airoha/airoha_ppe.c
+@@ -11,7 +11,9 @@
+ #include <linux/rhashtable.h>
+ #include <net/ipv6.h>
+ #include <net/pkt_cls.h>
++#include <net/netlink.h>
++#include <linux/rtnetlink.h>
+ #include <net/route.h>
+ 
+ #include "airoha_regs.h"
+ #include "airoha_eth.h"
+@@ -601,6 +603,9 @@ airoha_ppe_foe_get_entry_locked(struct a
+ 
+ 	lockdep_assert_held(&ppe_lock);
+ 
++	if (hash >= airoha_ppe_get_total_num_entries(ppe))
++		return NULL;
++
+ 	if (hash < sram_num_entries) {
+ 		u32 *hwe = ppe->foe + hash * sizeof(struct airoha_foe_entry);
+ 		struct airoha_eth *eth = ppe->eth;
+@@ -1565,6 +1570,256 @@ out:
+ 	return err;
+ }
+ 
++static bool airoha_foe_mac_match(struct airoha_ppe *ppe,
++				 struct airoha_foe_entry *hwe, u8 *mac)
++{
++	struct airoha_foe_mac_info_common *l2;
++	u8 h_dest[ETH_ALEN], h_source[ETH_ALEN];
++	int type;
++
++	type = FIELD_GET(AIROHA_FOE_IB1_BIND_PACKET_TYPE, hwe->ib1);
++
++	if (type == PPE_PKT_TYPE_BRIDGE) {
++		*((__be32 *)h_dest) = cpu_to_be32(hwe->bridge.dest_mac_hi);
++		*((__be16 *)&h_dest[4]) = cpu_to_be16(hwe->bridge.dest_mac_lo);
++		*((__be16 *)h_source) = cpu_to_be16(hwe->bridge.src_mac_hi);
++		*((__be32 *)&h_source[2]) = cpu_to_be32(hwe->bridge.src_mac_lo);
++
++		return ether_addr_equal(h_dest, mac) ||
++		       ether_addr_equal(h_source, mac);
++	}
++
++	if (type >= PPE_PKT_TYPE_IPV6_ROUTE_3T) {
++		l2 = &hwe->ipv6.l2;
++	} else {
++		l2 = &hwe->ipv4.l2.common;
++		*((__be16 *)&h_source[4]) =
++			cpu_to_be16(hwe->ipv4.l2.src_mac_lo);
++	}
++
++	*((__be32 *)h_dest) = cpu_to_be32(l2->dest_mac_hi);
++	*((__be16 *)&h_dest[4]) = cpu_to_be16(l2->dest_mac_lo);
++	*((__be32 *)h_source) = cpu_to_be32(l2->src_mac_hi);
++
++	if (ether_addr_equal(h_dest, mac))
++		return true;
++
++	if (type < PPE_PKT_TYPE_IPV6_ROUTE_3T &&
++	    ether_addr_equal(h_source, mac))
++		return true;
++
++	return false;
++}
++
++static int
++airoha_ppe_roaming_teardown(struct airoha_ppe *ppe, u8 *mac)
++{
++	struct airoha_eth *eth = ppe->eth;
++	u32 num_entries = airoha_ppe_get_total_num_entries(ppe);
++	u32 sram_num_entries = airoha_ppe_get_total_sram_num_entries(ppe);
++	struct airoha_flow_table_entry *l2_to_free[32];
++	int i, count = 0, l2_count = 0;
++
++	spin_lock_bh(&ppe_lock);
++
++	for (i = 0; i < num_entries; i++) {
++		struct airoha_flow_table_entry *e;
++		struct airoha_foe_entry *hwe;
++		struct hlist_node *n;
++		int state, type;
++		u32 foe_idx;
++
++		hwe = airoha_ppe_foe_get_entry_locked(ppe, i);
++		if (!hwe)
++			continue;
++
++		state = FIELD_GET(AIROHA_FOE_IB1_BIND_STATE, hwe->ib1);
++		if (state != AIROHA_FOE_STATE_BIND &&
++		    state != AIROHA_FOE_STATE_UNBIND)
++			continue;
++
++		if (!airoha_foe_mac_match(ppe, hwe, mac))
++			continue;
++
++		type = FIELD_GET(AIROHA_FOE_IB1_BIND_PACKET_TYPE, hwe->ib1);
++
++		/*
++		 * For bridge entries, remove the L2 parent flow from
++		 * l2_flows and flow_table so that insert_entry() cannot
++		 * create new subflows with the stale redirect direction.
++		 * Existing subflows are freed here; their hardware entries
++		 * are also invalidated by the outer loop.
++		 */
++		if (type == PPE_PKT_TYPE_BRIDGE &&
++		    l2_count < ARRAY_SIZE(l2_to_free)) {
++			struct airoha_flow_table_entry *l2, *sf;
++			struct hlist_node *m;
++
++			l2 = rhashtable_lookup_fast(&ppe->l2_flows,
++						    &hwe->bridge,
++						    airoha_l2_flow_table_params);
++			if (l2) {
++				rhashtable_remove_fast(&ppe->l2_flows,
++						       &l2->l2_node,
++						       airoha_l2_flow_table_params);
++				rhashtable_remove_fast(&eth->flow_table,
++						       &l2->node,
++						       airoha_flow_table_params);
++				hlist_for_each_entry_safe(sf, m,
++							  &l2->l2_flows,
++							  l2_subflow_node) {
++					airoha_ppe_foe_remove_flow(ppe, sf);
++					hlist_del(&sf->l2_subflow_node);
++					kfree(sf);
++				}
++				l2_to_free[l2_count++] = l2;
++			}
++		}
++
++		foe_idx = airoha_ppe_foe_get_entry_hash(ppe, hwe);
++
++		hwe->ib1 &= ~AIROHA_FOE_IB1_BIND_STATE;
++		hwe->ib1 |= FIELD_PREP(AIROHA_FOE_IB1_BIND_STATE,
++					AIROHA_FOE_STATE_INVALID);
++		wmb();
++
++		if (i < sram_num_entries)
++			airoha_ppe_foe_commit_sram_entry(ppe, i);
++
++		hlist_for_each_entry_safe(e, n,
++					 &ppe->foe_flow[foe_idx], list) {
++			if (e->hash != i)
++				continue;
++
++			hlist_del_init(&e->list);
++			e->hash = 0xffff;
++		}
++
++		count++;
++	}
++
++	spin_unlock_bh(&ppe_lock);
++
++	for (i = 0; i < l2_count; i++)
++		kfree(l2_to_free[i]);
++
++	if (count)
++		pr_info("airoha_ppe: invalidated %d entries (%d l2) for roaming %pM\n",
++			count, l2_count, mac);
++
++	return count;
++}
++
++static void airoha_ppe_roam_handler(struct work_struct *work)
++{
++	struct airoha_eth *eth = container_of(work, struct airoha_eth,
++					      ppe_roam_work);
++	struct net_device *dev = NULL;
++	struct kvec iov;
++	struct msghdr msg;
++	struct nlmsghdr *nlh;
++	struct ndmsg *ndm;
++	struct nlattr *nla;
++	int len, ifindex;
++	u8 mac[ETH_ALEN];
++
++	if (!eth->ppe_roam_sock)
++		return;
++
++	iov.iov_base = eth->ppe_roam_buf;
++	iov.iov_len = sizeof(eth->ppe_roam_buf);
++	memset(&msg, 0, sizeof(msg));
++	msg.msg_namelen = sizeof(struct sockaddr_nl);
++
++	len = kernel_recvmsg(eth->ppe_roam_sock, &msg, &iov, 1,
++			     iov.iov_len, 0);
++	if (len <= 0)
++		goto out;
++
++	nlh = (struct nlmsghdr *)eth->ppe_roam_buf;
++	if (!NLMSG_OK(nlh, len) || nlh->nlmsg_type != RTM_NEWNEIGH)
++		goto out;
++
++	len = nlh->nlmsg_len - NLMSG_HDRLEN;
++	ndm = (struct ndmsg *)NLMSG_DATA(nlh);
++	if (ndm->ndm_family != PF_BRIDGE)
++		goto out;
++
++	ifindex = ndm->ndm_ifindex;
++	dev = dev_get_by_index(&init_net, ifindex);
++	if (!dev)
++		goto out;
++
++	if (!dev->ieee80211_ptr)
++		goto out;
++
++	nla = (struct nlattr *)((unsigned char *)ndm + sizeof(struct ndmsg));
++	len -= NLMSG_LENGTH(sizeof(struct ndmsg));
++	while (nla_ok(nla, len)) {
++		if (nla_type(nla) == NDA_LLADDR) {
++			memcpy(mac, nla_data(nla), ETH_ALEN);
++			airoha_ppe_roaming_teardown(eth->ppe, mac);
++		}
++		nla = nla_next(nla, &len);
++	}
++
++out:
++	if (dev)
++		dev_put(dev);
++	if (!work_pending(&eth->ppe_roam_work))
++		schedule_work(&eth->ppe_roam_work);
++}
++
++int airoha_ppe_roaming_start(struct airoha_eth *eth)
++{
++	struct socket *sock = NULL;
++	struct sockaddr_nl addr;
++	int ret;
++
++	INIT_WORK(&eth->ppe_roam_work, airoha_ppe_roam_handler);
++
++	ret = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW,
++			       NETLINK_ROUTE, &sock);
++	if (ret < 0) {
++		dev_warn(eth->dev,
++			 "PPE roaming: unable to create socket\n");
++		return ret;
++	}
++
++	addr.nl_family = AF_NETLINK;
++	addr.nl_pad = 0;
++	addr.nl_pid = 65533;
++	addr.nl_groups = 1 << (RTNLGRP_NEIGH - 1);
++	ret = kernel_bind(sock, (struct sockaddr *)&addr, sizeof(addr));
++	if (ret < 0) {
++		dev_warn(eth->dev,
++			 "PPE roaming: unable to bind socket\n");
++		sock_release(sock);
++		return ret;
++	}
++
++	eth->ppe_roam_sock = sock;
++	eth->ppe_roam_sock->sk->sk_rcvtimeo = msecs_to_jiffies(100);
++
++	schedule_work(&eth->ppe_roam_work);
++
++	dev_info(eth->dev, "PPE roaming handler activated\n");
++
++	return 0;
++}
++
++void airoha_ppe_roaming_stop(struct airoha_eth *eth)
++{
++	if (!eth->ppe_roam_sock)
++		return;
++
++	cancel_work_sync(&eth->ppe_roam_work);
++	sock_release(eth->ppe_roam_sock);
++	eth->ppe_roam_sock = NULL;
++
++	dev_info(eth->dev, "PPE roaming handler deactivated\n");
++}
++
+ int airoha_ppe_init(struct airoha_eth *eth)
+ {
+ 	int foe_size, err, ppe_num_stats_entries;
+@@ -1590,5 +1845,7 @@ static int airoha_ppe_offload_setup(stru
+ 	synchronize_rcu();
+ 
++	airoha_ppe_roaming_start(eth);
++
+ 	return 0;
+ 
+ error_npu_put:
+@@ -1611,6 +1868,8 @@ int airoha_ppe_init(struct airoha_eth *e
+ 
+ void airoha_ppe_deinit(struct airoha_eth *eth)
+ {
+ 	struct airoha_npu *npu;
++
++	airoha_ppe_roaming_stop(eth);
+ 
+ 	mutex_lock(&flow_offload_mutex);
