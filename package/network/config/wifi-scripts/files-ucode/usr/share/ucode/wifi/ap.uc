@@ -107,7 +107,7 @@ function iface_auth_type(config, band) {
 
 	if (config.auth_type in [ 'sae', 'psk-sae', 'psk-sae-compat' ]) {
 		config.sae_require_mfp = 1;
-		set_default(config, 'sae_groups', '19 20 21');
+		set_default(config, 'sae_groups', '19 20');
 		if (!config.ppsk) {
 			if (band == '6g')
 				set_default(config, 'sae_pwe', 1);

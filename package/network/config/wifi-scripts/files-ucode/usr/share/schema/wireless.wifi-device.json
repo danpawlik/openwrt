@@ -189,6 +189,21 @@
 			"type": "boolean",
 			"default": true
 		},
+		"eht_su_beamformer": {
+			"description": "EHT single user beamformer support",
+			"type": "boolean",
+			"default": true
+		},
+		"eht_su_beamformee": {
+			"description": "EHT single user beamformee support",
+			"type": "boolean",
+			"default": true
+		},
+		"eht_mu_beamformer": {
+			"description": "EHT multiple user beamformer support",
+			"type": "boolean",
+			"default": true
+		},
 		"he_mu_edca_ac_be_aci": {
 			"type": "number",
 			"default": 0
