@@ -449,7 +449,24 @@ function device_htmode_append(config) {
 
 	if (wildcard(config.htmode, 'EHT*')) {
 		config.ieee80211be = true;
-		append_vars(config, [ 'ieee80211be' ]);
+
+		let eht_phy_cap = phy_capabilities.eht_phy_cap;
+
+		set_default(config, 'eht_su_beamformer', true);
+		set_default(config, 'eht_su_beamformee', true);
+		set_default(config, 'eht_mu_beamformer', true);
+
+		if (length(eht_phy_cap) > 0) {
+			if (!(eht_phy_cap[0] & 0x20))
+				config.eht_su_beamformer = false;
+			if (!(eht_phy_cap[0] & 0x40))
+				config.eht_su_beamformee = false;
+			if (length(eht_phy_cap) < 8 || !(eht_phy_cap[7] & 0x10))
+				config.eht_mu_beamformer = false;
+		}
+
+		append_vars(config, [ 'ieee80211be',
+			'eht_su_beamformer', 'eht_su_beamformee', 'eht_mu_beamformer' ]);
 
 		if (config.hw_mode == 'a')
 			append_vars(config, [ 'eht_oper_chwidth', 'eht_oper_centr_freq_seg0_idx' ]);
@@ -472,11 +489,13 @@ function device_capabilities(config) {
 	phy_capabilities.vht_capa = band.vht_capa ?? 0;
 	phy_capabilities.he_mac_cap = [];
 	phy_capabilities.he_phy_cap = [];
+	phy_capabilities.eht_phy_cap = [];
 	for (let iftype in band.iftype_data) {
 		if (!iftype.iftypes.ap)
 			continue;
 		phy_capabilities.he_mac_cap = iftype.he_cap_mac;
 		phy_capabilities.he_phy_cap = iftype.he_cap_phy;
+		phy_capabilities.eht_phy_cap = iftype.eht_cap_phy ?? [];
 	}
 
 	phy_features.ftm_responder = device_extended_features(phy.extended_features, NL80211_EXT_FEATURE_ENABLE_FTM_RESPONDER);
