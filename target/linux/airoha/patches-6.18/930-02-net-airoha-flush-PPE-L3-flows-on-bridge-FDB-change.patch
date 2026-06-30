@@ -1,0 +1,148 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Date: Mon, 30 Jun 2026 13:00:00 +0200
+Subject: [PATCH 2/2] net: airoha: also flush PPE L3 flows on bridge FDB change
+
+Extend the switchdev FDB notifier introduced in the previous patch to
+also flush PPE L3 hardware flow entries (FLOW_TYPE_L4) in addition to
+the L2 bridge entries it already handles.
+
+L3 flows are created when nf_flow_table offloads an established conntrack
+connection to the PPE via TC flower.  They are tracked in flow_table
+(keyed by TC cookie) and in the foe_flow[] hash buckets.  Like L2 flows,
+they encode the Ethernet src/dst MAC addresses in the hardware entry and
+can therefore become stale after a WiFi station roams.
+
+airoha_ppe_l4_flow_has_mac() extracts the MAC from the hardware entry:
+
+ - For IPv4 (HNAPT/ROUTE), both destination and source MACs are
+   available in full via airoha_foe_mac_info.common + src_mac_lo.
+
+ - For IPv6 (3T/5T), destination MAC is available in full via
+   airoha_foe_mac_info_common.  The source MAC is skipped because
+   airoha_foe_mac_info_common lacks src_mac_lo and src_mac_hi embeds
+   AIROHA_FOE_MAC_SMAC_ID in bits 20-16 which interferes with a direct
+   byte comparison.  Inbound flows (internet → station) are the critical
+   case anyway: those have the station MAC as *destination*, which is
+   always reliably matched.
+
+The work handler now uses explicit braces so that both L2 and L4 flushes
+are unambiguously guarded by the npu NULL check.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/net/ethernet/airoha/airoha_ppe.c | 100 +++++++++++++++++++++++++++++-
+ 1 file changed, 99 insertions(+), 1 deletion(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_ppe.c
++++ b/drivers/net/ethernet/airoha/airoha_ppe.c
+@@ -1491,6 +1491,98 @@
+ 	rhashtable_walk_stop(&iter);
+ 	rhashtable_walk_exit(&iter);
+ }
++/**
++ * airoha_ppe_l4_flow_has_mac - check if L3 PPE flow @e involves MAC @addr
++ *
++ * dest_mac fields are always exact MAC bytes.  src_mac_hi may embed
++ * AIROHA_FOE_MAC_SMAC_ID in bits 20-16 when hardware MAC rewriting is
++ * active; in pure bridge/dumb-AP mode smac_id == 0xf so src_mac_hi holds
++ * the plain MAC bytes and the comparison is exact.  IPv6 l2 is
++ * airoha_foe_mac_info_common which has no src_mac_lo, so the source check
++ * is skipped there.
++ */
++static bool
++airoha_ppe_l4_flow_has_mac(const struct airoha_flow_table_entry *e,
++			    const u8 *addr)
++{
++	const struct airoha_foe_mac_info_common *l2;
++	u16 src_mac_lo = 0;
++	bool has_src = false;
++	int type;
++
++	type = FIELD_GET(AIROHA_FOE_IB1_BIND_PACKET_TYPE, e->data.ib1);
++
++	switch (type) {
++	case PPE_PKT_TYPE_IPV4_HNAPT:
++	case PPE_PKT_TYPE_IPV4_ROUTE:
++		l2 = &e->data.ipv4.l2.common;
++		src_mac_lo = e->data.ipv4.l2.src_mac_lo;
++		has_src = true;
++		break;
++	case PPE_PKT_TYPE_IPV6_ROUTE_3T:
++	case PPE_PKT_TYPE_IPV6_ROUTE_5T:
++		l2 = &e->data.ipv6.l2;
++		break;
++	default:
++		return false;
++	}
++
++	/* Destination MAC is always stored as exact bytes. */
++	if (get_unaligned_be32(addr)     == l2->dest_mac_hi &&
++	    get_unaligned_be16(addr + 4) == l2->dest_mac_lo)
++		return true;
++
++	if (has_src &&
++	    get_unaligned_be32(addr)     == l2->src_mac_hi &&
++	    get_unaligned_be16(addr + 4) == src_mac_lo)
++		return true;
++
++	return false;
++}
++
++/**
++ * airoha_ppe_flush_l4_flows_by_mac - remove every PPE L3 flow for @addr
++ *
++ * Walks flow_table for FLOW_TYPE_L4 entries (nf_flow_table offloaded L3
++ * flows) whose source or destination MAC matches @addr, removing them from
++ * both the PPE hardware and the kernel flow tables.
++ *
++ * Must be called with flow_offload_mutex held.
++ */
++static void
++airoha_ppe_flush_l4_flows_by_mac(struct airoha_eth *eth, const u8 *addr)
++{
++	struct airoha_ppe *ppe = eth->ppe;
++	struct airoha_flow_table_entry *e;
++	struct rhashtable_iter iter;
++
++	lockdep_assert_held(&flow_offload_mutex);
++
++	rhashtable_walk_enter(&eth->flow_table, &iter);
++restart:
++	rhashtable_walk_start(&iter);
++	while ((e = rhashtable_walk_next(&iter)) != NULL) {
++		if (IS_ERR(e))
++			continue;
++		if (e->type != FLOW_TYPE_L4)
++			continue;
++		if (!airoha_ppe_l4_flow_has_mac(e, addr))
++			continue;
++
++		rhashtable_walk_stop(&iter);
++		rhashtable_walk_exit(&iter);
++
++		airoha_ppe_foe_flow_remove_entry(ppe, e);
++		rhashtable_remove_fast(&eth->flow_table, &e->node,
++				       airoha_flow_table_params);
++		kfree(e);
++
++		rhashtable_walk_enter(&eth->flow_table, &iter);
++		goto restart;
++	}
++	rhashtable_walk_stop(&iter);
++	rhashtable_walk_exit(&iter);
++}
+ 
+ static void airoha_ppe_fdb_work_handler(struct work_struct *work)
+ {
+@@ -1498,8 +1590,10 @@
+ 		container_of(work, struct airoha_ppe_fdb_work, work);
+ 
+ 	mutex_lock(&flow_offload_mutex);
+-	if (w->eth->npu)
++	if (w->eth->npu) {
+ 		airoha_ppe_flush_l2_flows_by_mac(w->eth, w->addr);
++		airoha_ppe_flush_l4_flows_by_mac(w->eth, w->addr);
++	}
+ 	mutex_unlock(&flow_offload_mutex);
+ 
+ 	kfree(w);

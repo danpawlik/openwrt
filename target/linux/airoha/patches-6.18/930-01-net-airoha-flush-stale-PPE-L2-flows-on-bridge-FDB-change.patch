@@ -1,0 +1,249 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Date: Mon, 30 Jun 2026 12:00:00 +0200
+Subject: [PATCH 1/2] net: airoha: flush stale PPE L2 flows on bridge FDB change
+
+When a WiFi station roams between bridge ports (e.g., switching between
+2.4 GHz, 5 GHz and 6 GHz radios on a multi-band AP), the Linux bridge
+updates its FDB table and emits switchdev FDB events.  The Airoha PPE
+hardware, managed by the NPU firmware, keeps its L2 bridge flow entries
+(SRAM-bound BND entries) pointing to the old bridge port.  Those stale
+hardware flows dead-end downstream traffic to the departed radio, limiting
+throughput to ~1 Mbit/s indefinitely.
+
+The root cause is that the Airoha driver has no mechanism to be notified
+of bridge FDB changes, so it never invalidates the corresponding hardware
+flows.
+
+Fix this by registering a switchdev notifier that handles both
+SWITCHDEV_FDB_ADD_TO_DEVICE and SWITCHDEV_FDB_DEL_TO_DEVICE events:
+
+ - FDB_ADD_TO_DEVICE fires when the bridge re-learns a MAC on a *new*
+   port (roaming case): old-port hardware flows for that MAC are stale
+   and must be cleared so the next packet establishes a fresh flow via
+   the correct port.
+
+ - FDB_DEL_TO_DEVICE fires on a clean disconnect: hardware flows for the
+   departed station must be cleared to prevent traffic from reaching a
+   port where the station no longer exists.
+
+Because the switchdev notifier chain is atomic, the actual PPE flush is
+deferred to a private ordered workqueue so that it can safely acquire
+flow_offload_mutex.  Using an ordered (single-thread) workqueue ensures
+flushes for the same MAC are serialised.  destroy_workqueue() in the
+deinit path drains all pending work before shared state is torn down.
+
+After the flush the TC flower offload layer will return -ENOENT when
+bridger next issues RTM_DELTFILTER for the (now already-gone) filter;
+the TC layer handles -ENOENT from a FLOW_CLS_DESTROY callback by
+removing the software filter state, which is the correct outcome.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/net/ethernet/airoha/airoha_eth.h |  4 ++
+ drivers/net/ethernet/airoha/airoha_ppe.c | 151 +++++++++++++++++++++++++++++-
+ 2 files changed, 154 insertions(+), 1 deletion(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_eth.h
++++ b/drivers/net/ethernet/airoha/airoha_eth.h
+@@ -13,6 +13,7 @@
+ #include <linux/kernel.h>
+ #include <linux/netdevice.h>
+ #include <linux/reset.h>
++#include <linux/workqueue.h>
+ #include <linux/soc/airoha/airoha_offload.h>
+ #include <net/dsa.h>
+
+@@ -631,6 +632,10 @@
+ 	struct airoha_ppe *ppe;
+ 	struct rhashtable flow_table;
+
++	/* Switchdev FDB notifier + workqueue for deferred PPE flow flushes */
++	struct notifier_block switchdev_nb;
++	struct workqueue_struct *fdb_wq;
++
+ 	struct reset_control_bulk_data rsts[AIROHA_MAX_NUM_RSTS];
+ 	struct reset_control_bulk_data *xsi_rsts;
+
+--- a/drivers/net/ethernet/airoha/airoha_ppe.c
++++ b/drivers/net/ethernet/airoha/airoha_ppe.c
+@@ -11,6 +11,7 @@
+ #include <linux/rhashtable.h>
+ #include <net/ipv6.h>
+ #include <linux/if_vlan.h>
++#include <net/switchdev.h>
+ #include <net/pkt_cls.h>
+ #include <net/route.h>
+
+@@ -1408,6 +1409,137 @@
+ 	return err;
+ }
+
++/* ---- switchdev notifier: flush stale PPE L2 flows on bridge FDB change --- */
++
++struct airoha_ppe_fdb_work {
++	struct work_struct work;
++	struct airoha_eth *eth;
++	u8 addr[ETH_ALEN];
++};
++
++/**
++ * airoha_ppe_l2_flow_has_mac - return true if @e involves MAC address @addr
++ *
++ * The l2_flows rhashtable key is the first 2*ETH_ALEN bytes of
++ * airoha_foe_bridge, laid out by airoha_ppe_foe_set_bridge_addrs():
++ *   dest_mac_hi: be32 of dst[0..3], src_mac_hi: be16 of src[0..1]
++ *   dest_mac_lo: be16 of dst[4..5], src_mac_lo: be32 of src[2..5]
++ */
++static bool
++airoha_ppe_l2_flow_has_mac(const struct airoha_flow_table_entry *e,
++			    const u8 *addr)
++{
++	const struct airoha_foe_bridge *br = &e->data.bridge;
++
++	/* Check destination MAC */
++	if (get_unaligned_be32(addr)     == br->dest_mac_hi &&
++	    get_unaligned_be16(addr + 4) == br->dest_mac_lo)
++		return true;
++
++	/* Check source MAC */
++	if (get_unaligned_be16(addr)     == br->src_mac_hi &&
++	    get_unaligned_be32(addr + 2) == br->src_mac_lo)
++		return true;
++
++	return false;
++}
++
++/**
++ * airoha_ppe_flush_l2_flows_by_mac - remove every PPE L2 flow for @addr
++ *
++ * Walks the l2_flows rhashtable and removes all entries whose source or
++ * destination MAC matches @addr.  After removal from l2_flows the entry
++ * is also removed from flow_table so a subsequent FLOW_CLS_DESTROY from
++ * the TC layer returns -ENOENT (handled gracefully as "already gone").
++ *
++ * Must be called with flow_offload_mutex held.
++ */
++static void
++airoha_ppe_flush_l2_flows_by_mac(struct airoha_eth *eth, const u8 *addr)
++{
++	struct airoha_ppe *ppe = eth->ppe;
++	struct airoha_flow_table_entry *e;
++	struct rhashtable_iter iter;
++
++	lockdep_assert_held(&flow_offload_mutex);
++
++	/*
++	 * Stop, remove and restart on each match so the iterator stays
++	 * consistent.  The table is small in practice (one entry per active
++	 * bridge flow pair), so the O(n*m) cost is negligible.
++	 */
++	rhashtable_walk_enter(&ppe->l2_flows, &iter);
++restart:
++	rhashtable_walk_start(&iter);
++	while ((e = rhashtable_walk_next(&iter)) != NULL) {
++		if (IS_ERR(e))
++			continue;
++		if (!airoha_ppe_l2_flow_has_mac(e, addr))
++			continue;
++
++		rhashtable_walk_stop(&iter);
++		rhashtable_walk_exit(&iter);
++
++		airoha_ppe_foe_flow_remove_entry(ppe, e);
++		rhashtable_remove_fast(&eth->flow_table, &e->node,
++				       airoha_flow_table_params);
++		kfree(e);
++
++		rhashtable_walk_enter(&ppe->l2_flows, &iter);
++		goto restart;
++	}
++	rhashtable_walk_stop(&iter);
++	rhashtable_walk_exit(&iter);
++}
++
++static void airoha_ppe_fdb_work_handler(struct work_struct *work)
++{
++	struct airoha_ppe_fdb_work *w =
++		container_of(work, struct airoha_ppe_fdb_work, work);
++
++	mutex_lock(&flow_offload_mutex);
++	if (w->eth->npu)
++		airoha_ppe_flush_l2_flows_by_mac(w->eth, w->addr);
++	mutex_unlock(&flow_offload_mutex);
++
++	kfree(w);
++}
++
++static int airoha_ppe_switchdev_event(struct notifier_block *nb,
++				      unsigned long event, void *ptr)
++{
++	struct airoha_eth *eth =
++		container_of(nb, struct airoha_eth, switchdev_nb);
++	const struct switchdev_notifier_fdb_info *fdb_info = ptr;
++	struct airoha_ppe_fdb_work *w;
++
++	/*
++	 * FDB_ADD_TO_DEVICE: MAC re-learned on a new port (roaming) — old
++	 * port flows are now stale.
++	 * FDB_DEL_TO_DEVICE: MAC removed from bridge — flows must be cleared.
++	 */
++	if (event != SWITCHDEV_FDB_ADD_TO_DEVICE &&
++	    event != SWITCHDEV_FDB_DEL_TO_DEVICE)
++		return NOTIFY_DONE;
++
++	/* Skip local (own-MAC) and multicast/broadcast addresses. */
++	if (fdb_info->is_local || is_multicast_ether_addr(fdb_info->addr))
++		return NOTIFY_DONE;
++
++	w = kmalloc(sizeof(*w), GFP_ATOMIC);
++	if (!w)
++		return NOTIFY_BAD;
++
++	INIT_WORK(&w->work, airoha_ppe_fdb_work_handler);
++	w->eth = eth;
++	ether_addr_copy(w->addr, fdb_info->addr);
++	queue_work(eth->fdb_wq, &w->work);
++
++	return NOTIFY_DONE;
++}
++
++/* -------------------------------------------------------------------------- */
++
+ static struct airoha_npu *airoha_ppe_npu_get(struct airoha_eth *eth)
+ {
+ 	struct airoha_npu *npu = airoha_npu_get(eth->dev);
+@@ -1663,8 +1795,23 @@
+ 	if (err)
+ 		goto error_l2_flow_table_destroy;
+
++	eth->fdb_wq = alloc_ordered_workqueue("airoha_ppe_fdb", 0);
++	if (!eth->fdb_wq) {
++		err = -ENOMEM;
++		goto error_debugfs_destroy;
++	}
++
++	eth->switchdev_nb.notifier_call = airoha_ppe_switchdev_event;
++	err = register_switchdev_notifier(&eth->switchdev_nb);
++	if (err)
++		goto error_wq_destroy;
++
+ 	return 0;
+
++error_wq_destroy:
++	destroy_workqueue(eth->fdb_wq);
++error_debugfs_destroy:
++	debugfs_remove(ppe->debugfs_dir);
+ error_l2_flow_table_destroy:
+ 	rhashtable_destroy(&ppe->l2_flows);
+ error_flow_table_destroy:
+@@ -1677,6 +1824,10 @@
+ {
+ 	struct airoha_npu *npu;
+
++	unregister_switchdev_notifier(&eth->switchdev_nb);
++	/* drain pending fdb flush work before tearing down shared state */
++	destroy_workqueue(eth->fdb_wq);
++
+ 	mutex_lock(&flow_offload_mutex);
+
+ 	npu = rcu_replace_pointer(eth->npu, NULL,
