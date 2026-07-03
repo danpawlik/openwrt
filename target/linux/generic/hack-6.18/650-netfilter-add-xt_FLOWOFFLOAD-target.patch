@@ -10,7 +10,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  net/netfilter/Kconfig                         |  10 +-
  net/netfilter/Makefile                        |   1 +
  net/netfilter/nf_flow_table_core.c            |   5 +-
- net/netfilter/xt_FLOWOFFLOAD.c                | 714 ++++++++++++++++++
+ net/netfilter/xt_FLOWOFFLOAD.c                | 716 ++++++++++++++++++
  6 files changed, 748 insertions(+), 4 deletions(-)
  create mode 100644 include/uapi/linux/netfilter/xt_FLOWOFFLOAD.h
  create mode 100644 net/netfilter/xt_FLOWOFFLOAD.c
@@ -115,7 +115,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  {
 --- /dev/null
 +++ b/net/netfilter/xt_FLOWOFFLOAD.c
-@@ -0,0 +1,714 @@
+@@ -0,0 +1,716 @@
 +/*
 + * Copyright (C) 2018-2021 Felix Fietkau <nbd@nbd.name>
 + *
@@ -456,6 +456,8 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 +				info->num_encaps--;
 +				break;
 +			case DEV_PATH_BR_VLAN_KEEP:
++				break;
++			case DEV_PATH_BR_VLAN_KEEP_HW:
 +				break;
 +			}
 +			break;
