@@ -10,7 +10,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  net/netfilter/Kconfig                         |  10 +-
  net/netfilter/Makefile                        |   1 +
  net/netfilter/nf_flow_table_core.c            |   5 +-
- net/netfilter/xt_FLOWOFFLOAD.c                | 714 ++++++++++++++++++
+ net/netfilter/xt_FLOWOFFLOAD.c                | 716 ++++++++++++++++++
  6 files changed, 748 insertions(+), 4 deletions(-)
  create mode 100644 include/uapi/linux/netfilter/xt_FLOWOFFLOAD.h
  create mode 100644 net/netfilter/xt_FLOWOFFLOAD.c
@@ -18,9 +18,9 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
 @@ -309,6 +309,11 @@ void nf_flow_table_free(struct nf_flowta
- 
+
  void flow_offload_teardown(struct flow_offload *flow);
- 
+
 +int nf_flow_table_iterate(struct nf_flowtable *flow_table,
 +                      void (*iter)(struct nf_flowtable *flowtable,
 +                                   struct flow_offload *flow, void *data),
@@ -58,11 +58,11 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 -	depends on NF_TABLES
  	help
  	  This option adds the flow table core infrastructure.
- 
+
 @@ -1031,6 +1030,15 @@ config NETFILTER_XT_TARGET_NOTRACK
  	depends on NETFILTER_ADVANCED
  	select NETFILTER_XT_TARGET_CT
- 
+
 +config NETFILTER_XT_TARGET_FLOWOFFLOAD
 +	tristate '"FLOWOFFLOAD" target support'
 +	depends on NF_FLOW_TABLE
@@ -98,7 +98,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 @@ -426,8 +425,7 @@ flow_offload_lookup(struct nf_flowtable
  }
  EXPORT_SYMBOL_GPL(flow_offload_lookup);
- 
+
 -static int
 -nf_flow_table_iterate(struct nf_flowtable *flow_table,
 +int nf_flow_table_iterate(struct nf_flowtable *flow_table,
@@ -110,12 +110,12 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  	}
  }
 +EXPORT_SYMBOL_GPL(nf_flow_table_iterate);
- 
+
  void nf_flow_table_gc_run(struct nf_flowtable *flow_table)
  {
 --- /dev/null
 +++ b/net/netfilter/xt_FLOWOFFLOAD.c
-@@ -0,0 +1,734 @@
+@@ -0,0 +1,716 @@
 +/*
 + * Copyright (C) 2018-2021 Felix Fietkau <nbd@nbd.name>
 + *
@@ -465,6 +465,8 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 +
 +				break;
 +			case DEV_PATH_BR_VLAN_KEEP:
++				break;
++			case DEV_PATH_BR_VLAN_KEEP_HW:
 +				break;
 +			}
 +			break;
