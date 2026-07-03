@@ -30,8 +30,6 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  net/netfilter/nft_flow_offload.c | 10 ++++++++++
  4 files changed, 23 insertions(+), 7 deletions(-)
 
-diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
-index fc55157a4486..9e3483cd1058 100644
 --- a/include/linux/netdevice.h
 +++ b/include/linux/netdevice.h
 @@ -893,6 +893,7 @@ struct net_device_path {
@@ -42,11 +40,9 @@ index fc55157a4486..9e3483cd1058 100644
  			}		vlan_mode;
  			u16		vlan_id;
  			__be16		vlan_proto;
-diff --git a/net/bridge/br_device.c b/net/bridge/br_device.c
-index 525d4eccd194..da28125746d5 100644
 --- a/net/bridge/br_device.c
 +++ b/net/bridge/br_device.c
-@@ -423,6 +423,7 @@ static int br_fill_forward_path(struct net_device_path_ctx *ctx,
+@@ -423,6 +423,7 @@ static int br_fill_forward_path(struct n
  	case DEV_PATH_BR_VLAN_UNTAG:
  		ctx->num_vlans--;
  		break;
@@ -54,11 +50,9 @@ index 525d4eccd194..da28125746d5 100644
  	case DEV_PATH_BR_VLAN_KEEP:
  		break;
  	}
-diff --git a/net/bridge/br_vlan.c b/net/bridge/br_vlan.c
-index ce72b837ff8e..b069850d3d3c 100644
 --- a/net/bridge/br_vlan.c
 +++ b/net/bridge/br_vlan.c
-@@ -1489,13 +1489,17 @@ int br_vlan_fill_forward_path_mode(struct net_bridge *br,
+@@ -1489,13 +1489,17 @@ int br_vlan_fill_forward_path_mode(struc
  	if (!(v->flags & BRIDGE_VLAN_INFO_UNTAGGED))
  		return 0;
  
@@ -83,11 +77,9 @@ index ce72b837ff8e..b069850d3d3c 100644
  	return 0;
  }
  
-diff --git a/net/netfilter/nft_flow_offload.c b/net/netfilter/nft_flow_offload.c
-index d3707b95c8c4..765c91407c35 100644
 --- a/net/netfilter/nft_flow_offload.c
 +++ b/net/netfilter/nft_flow_offload.c
-@@ -145,6 +145,16 @@ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+@@ -145,6 +145,16 @@ static void nft_dev_path_info(const stru
  			case DEV_PATH_BR_VLAN_UNTAG_HW:
  				info->ingress_vlans |= BIT(info->num_encaps - 1);
  				break;
@@ -104,6 +96,3 @@ index d3707b95c8c4..765c91407c35 100644
  			case DEV_PATH_BR_VLAN_TAG:
  				if (info->num_encaps >= NF_FLOW_TABLE_ENCAP_MAX) {
  					info->indev = NULL;
--- 
-2.54.0
-

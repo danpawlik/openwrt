@@ -26,11 +26,9 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  net/netfilter/nft_flow_offload.c | 5 +++++
  1 file changed, 5 insertions(+)
 
-diff --git a/net/netfilter/nft_flow_offload.c b/net/netfilter/nft_flow_offload.c
-index e95e5f59a3d6..d3707b95c8c4 100644
 --- a/net/netfilter/nft_flow_offload.c
 +++ b/net/netfilter/nft_flow_offload.c
-@@ -106,6 +106,7 @@ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+@@ -106,6 +106,7 @@ static void nft_dev_path_info(const stru
  		switch (path->type) {
  		case DEV_PATH_ETHERNET:
  		case DEV_PATH_DSA:
@@ -38,7 +36,7 @@ index e95e5f59a3d6..d3707b95c8c4 100644
  		case DEV_PATH_VLAN:
  		case DEV_PATH_PPPOE:
  			info->indev = path->dev;
-@@ -118,6 +119,10 @@ static void nft_dev_path_info(const struct net_device_path_stack *stack,
+@@ -118,6 +119,10 @@ static void nft_dev_path_info(const stru
  				i = stack->num_paths;
  				break;
  			}
@@ -49,6 +47,3 @@ index e95e5f59a3d6..d3707b95c8c4 100644
  
  			/* DEV_PATH_VLAN and DEV_PATH_PPPOE */
  			if (info->num_encaps >= NF_FLOW_TABLE_ENCAP_MAX) {
--- 
-2.54.0
-

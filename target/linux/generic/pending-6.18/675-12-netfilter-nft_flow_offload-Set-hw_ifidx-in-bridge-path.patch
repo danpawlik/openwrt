@@ -17,11 +17,9 @@ is later copied to hw_ifidx by flow_offload_route_init).
  net/netfilter/nft_flow_offload.c | 1 +
  1 file changed, 1 insertion(+)
 
-diff --git a/net/netfilter/nft_flow_offload.c b/net/netfilter/nft_flow_offload.c
-index 926b88c36372..5fc5e0e34179 100644
 --- a/net/netfilter/nft_flow_offload.c
 +++ b/net/netfilter/nft_flow_offload.c
-@@ -354,6 +354,7 @@ static int nft_dev_fill_bridge_path(struct flow_offload *flow,
+@@ -354,6 +354,7 @@ static int nft_dev_fill_bridge_path(stru
  	ether_addr_copy(th[dir].tuple.out.h_source, src_ha);
  	ether_addr_copy(th[dir].tuple.out.h_dest, dst_ha);
  	th[dir].tuple.out.ifidx = info.outdev->ifindex;
@@ -29,6 +27,3 @@ index 926b88c36372..5fc5e0e34179 100644
  	th[dir].tuple.xmit_type = FLOW_OFFLOAD_XMIT_DIRECT;
  
  	return 0;
--- 
-2.54.0
-
