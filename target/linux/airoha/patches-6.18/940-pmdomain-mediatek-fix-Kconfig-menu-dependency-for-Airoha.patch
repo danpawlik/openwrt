@@ -1,0 +1,32 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: pmdomain: mediatek: fix Kconfig menu dependency for Airoha
+
+The AIROHA_CPU_PM_DOMAIN config option is nested inside the
+"MediaTek PM Domains" menu which depends on ARCH_MEDIATEK || COMPILE_TEST.
+Airoha SoCs use ARCH_AIROHA, not ARCH_MEDIATEK, so the config option is
+silently unreachable and the driver is never compiled even when explicitly
+set in defconfig.
+
+Without this driver, the CPU clock and PM domain required by cpufreq are
+never registered, causing cpufreq to fail with:
+  platform airoha-cpufreq: deferred probe pending: Failed to set OPP config
+
+Add ARCH_AIROHA to the menu dependency so the Airoha CPU PM domain
+driver can actually be selected and built.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/pmdomain/mediatek/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/drivers/pmdomain/mediatek/Kconfig
++++ b/drivers/pmdomain/mediatek/Kconfig
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+
+ menu "MediaTek PM Domains"
+-	depends on ARCH_MEDIATEK || COMPILE_TEST
++	depends on ARCH_MEDIATEK || ARCH_AIROHA || COMPILE_TEST
+
+ config MTK_SCPSYS
+ 	bool "MediaTek SCPSYS Support"
