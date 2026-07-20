@@ -1,0 +1,32 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: cpufreq: airoha: fix dev_pm_domain_attach_list return value check
+
+dev_pm_domain_attach_list() returns the number of attached domains on
+success (a positive integer) or a negative error code on failure. The
+driver checks "if (ret)" which incorrectly treats a successful attach
+(returning 1) as an error.
+
+This was a latent bug masked by the pmdomain driver never loading due
+to a Kconfig dependency issue (fixed in patch 940). Once the pmdomain
+driver probes, attach_list returns 1 and cpufreq probe bails out with
+"error 1".
+
+Change the check to "if (ret < 0)" to only treat negative values as
+errors.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/cpufreq/airoha-cpufreq.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/drivers/cpufreq/airoha-cpufreq.c
++++ b/drivers/cpufreq/airoha-cpufreq.c
+@@ -64,7 +64,7 @@
+ 	/* Attach PM for OPP */
+ 	ret = dev_pm_domain_attach_list(cpu_dev, &attach_data,
+ 					&priv->pd_list);
+-	if (ret)
++	if (ret < 0)
+ 		goto clear_opp_config;
+
+ 	cpufreq_dt = platform_device_register_simple("cpufreq-dt", -1, NULL, 0);
