@@ -55,8 +55,12 @@
 +	}
 +
 +	chain forward {
-+		type filter hook forward priority filter; policy accept;
-+		meta l4proto { tcp, udp } flow offload @fb;
++		type filter hook forward priority -1; policy accept;
++		# VoWiFi / IPsec: keep IKE + NAT-T on CPU. PPE FOEs can get
++		# empty/wrong MACs after STA reassoc and stall UDP/4500 setup.
++		meta l4proto udp udp dport { 500, 4500 } accept;
++		meta l4proto udp udp sport { 500, 4500 } accept;
++		meta l4proto { tcp, udp } flow add @fb counter accept;
 +	}
 +}
 +{% endif %}

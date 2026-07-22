@@ -11,8 +11,12 @@ is 0, the PPE binds the flow entry but cannot forward any packets.
 
 Fixes the bridge HW offload path which was missing the hw_ifidx
 assignment present in the routed offload path (nft_dev_forward_path
-sets route->tuple[dir].out.hw_ifindex = info.hw_outdev->ifindex, which
-is later copied to hw_ifidx by flow_offload_route_init).
+sets route->tuple[dir].out.hw_ifindex from info.hw_outdev, which is
+later copied to hw_ifidx by flow_offload_route_init).
+
+Guard hw_outdev against NULL: nft_dev_path_info() normally sets
+hw_outdev = indev, and the caller already rejects a NULL indev, but
+keep the same defensive pattern used elsewhere.
 ---
  net/netfilter/nft_flow_offload.c | 1 +
  1 file changed, 1 insertion(+)
@@ -23,7 +27,7 @@ is later copied to hw_ifidx by flow_offload_route_init).
  	ether_addr_copy(th[dir].tuple.out.h_source, src_ha);
  	ether_addr_copy(th[dir].tuple.out.h_dest, dst_ha);
  	th[dir].tuple.out.ifidx = info.outdev->ifindex;
-+	th[dir].tuple.out.hw_ifidx = info.hw_outdev->ifindex;
++	th[dir].tuple.out.hw_ifidx = info.hw_outdev ? info.hw_outdev->ifindex : 0;
  	th[dir].tuple.xmit_type = FLOW_OFFLOAD_XMIT_DIRECT;
  
  	return 0;

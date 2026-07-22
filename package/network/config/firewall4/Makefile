@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=firewall4
-PKG_RELEASE:=2
+PKG_RELEASE:=4
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL=$(PROJECT_GIT)/project/firewall4.git
@@ -24,6 +24,7 @@ define Package/firewall4
   DEPENDS:= \
 	+kmod-nft-core +kmod-nft-fib +kmod-nft-offload \
 	+kmod-nft-nat \
+	+kmod-nft-bridge +kmod-nft-netdev +kmod-nf-conntrack-bridge \
 	+nftables-json \
 	+ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci
   EXTRA_DEPENDS:=ucode (>=2022.03.22)
@@ -43,6 +44,8 @@ endef
 
 define Package/firewall4/install
 	$(CP) -a $(PKG_BUILD_DIR)/root/* $(1)/
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/net
+	$(INSTALL_BIN) ./files/etc/hotplug.d/net/50-fw4-bridge-reload $(1)/etc/hotplug.d/net/
 endef
 
 define Build/Compile

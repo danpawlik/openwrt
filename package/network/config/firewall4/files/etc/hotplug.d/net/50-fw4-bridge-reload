@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# Refresh bridge flowtable devices when a netdev appears.
+# Wifi AP ifaces (and custom option ifname names) often join the bridge
+# after the initial firewall start, so fw4 must re-resolve bridge ports.
+
+[ "$ACTION" = "add" ] || exit 0
+[ -n "$DEVICENAME" ] || exit 0
+[ "$DEVICENAME" = "lo" ] && exit 0
+
+# Nothing to do unless bridge flow offload is active.
+nft list flowtable bridge fw4 fb >/dev/null 2>&1 || exit 0
+
+# Already listed in the flowtable.
+nft list flowtable bridge fw4 fb 2>/dev/null | grep -qw "\"${DEVICENAME}\"" && exit 0
+
+(
+	exec 9>/var/lock/fw4-bridge-reload.lock
+	flock -n 9 || exit 0
+	sleep 2
+	/etc/init.d/firewall reload >/dev/null 2>&1
+) &
+
+exit 0
