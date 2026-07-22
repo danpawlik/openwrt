@@ -8,15 +8,16 @@ Edit nft_flow_offload_eval() to make it possible to handle a flowtable of
 the nft bridge family.
 
 Use nft_flow_offload_bridge_init() to fill the flow tuples. It uses
-nft_dev_fill_bridge_path() in each direction.
+nft_dev_fill_bridge_path() in each direction. Handle both ETH_P_8021Q
+and ETH_P_8021AD ethertypes when recording VLAN encaps.
 
 Based on commit 3d173f02efaa from ericwoud/bpir-nftflow-nf-next-20260512.
 
 Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
 ---
  include/net/netfilter/nf_flow_table.h |   7 ++
- net/netfilter/nft_flow_offload.c      | 148 +++++++++++++++++++++++++-
- 2 files changed, 150 insertions(+), 5 deletions(-)
+ net/netfilter/nft_flow_offload.c      | 149 +++++++++++++++++++++++++-
+ 2 files changed, 151 insertions(+), 5 deletions(-)
 
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
@@ -51,7 +52,7 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  #include <linux/netfilter/nf_conntrack_common.h>
  #include <linux/netfilter/nf_tables.h>
  #include <net/ip.h>
-@@ -294,6 +295,133 @@ static int nft_flow_route(const struct n
+@@ -294,6 +295,134 @@ static int nft_flow_route(const struct n
  	return 0;
  }
  
@@ -146,11 +147,12 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
 +	}
 +
 +	switch (eth_hdr(pkt->skb)->h_proto) {
++	case htons(ETH_P_8021AD):
 +	case htons(ETH_P_8021Q): {
 +		struct vlan_hdr *vhdr = (struct vlan_hdr *)(skb_mac_header(pkt->skb)
 +					 + sizeof(struct ethhdr));
 +		tuple->encap[i].id = ntohs(vhdr->h_vlan_TCI);
-+		tuple->encap[i].proto = htons(ETH_P_8021Q);
++		tuple->encap[i].proto = eth_hdr(pkt->skb)->h_proto;
 +		i++;
 +		break;
 +	}
@@ -185,7 +187,7 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  static bool nft_flow_offload_skip(struct sk_buff *skb, int family)
  {
  	if (skb_sec_path(skb))
-@@ -326,6 +454,7 @@ static void nft_flow_offload_eval(const
+@@ -326,6 +455,7 @@ static void nft_flow_offload_eval(const
  {
  	struct nft_flow_offload *priv = nft_expr_priv(expr);
  	struct nf_flowtable *flowtable = &priv->flowtable->data;
@@ -193,7 +195,7 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  	struct tcphdr _tcph, *tcph = NULL;
  	struct nf_flow_route route = {};
  	enum ip_conntrack_info ctinfo;
-@@ -379,14 +508,21 @@ static void nft_flow_offload_eval(const
+@@ -379,14 +509,21 @@ static void nft_flow_offload_eval(const
  		goto out;
  
  	dir = CTINFO2DIR(ctinfo);
@@ -218,7 +220,7 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  	if (tcph)
  		flow_offload_ct_tcp(ct);
  
-@@ -400,8 +536,10 @@ static void nft_flow_offload_eval(const
+@@ -400,8 +537,10 @@ static void nft_flow_offload_eval(const
  err_flow_add:
  	flow_offload_free(flow);
  err_flow_alloc:
