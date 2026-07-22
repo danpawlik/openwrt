@@ -167,7 +167,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
  	.ppe_num = 3,
  	.hash_offset = 4,
  	.has_accounting = true,
-+	.num_tx_queues = 32,
++	.num_tx_queues = 128,
  	.foe_entry_size = MTK_FOE_ENTRY_V3_SIZE,
  	.tx = {
  		DESC_SIZE(struct mtk_tx_dma_v2),
