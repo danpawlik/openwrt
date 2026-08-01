@@ -15,11 +15,11 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 -	depends on NF_TABLES
  	help
  	  This option adds the flow table core infrastructure.
- 
+
 @@ -1031,6 +1030,15 @@ config NETFILTER_XT_TARGET_NOTRACK
  	depends on NETFILTER_ADVANCED
  	select NETFILTER_XT_TARGET_CT
- 
+
 +config NETFILTER_XT_TARGET_FLOWOFFLOAD
 +	tristate '"FLOWOFFLOAD" target support'
 +	depends on NF_FLOW_TABLE
@@ -763,7 +763,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 @@ -415,8 +414,7 @@ flow_offload_lookup(struct nf_flowtable
  }
  EXPORT_SYMBOL_GPL(flow_offload_lookup);
- 
+
 -static int
 -nf_flow_table_iterate(struct nf_flowtable *flow_table,
 +int nf_flow_table_iterate(struct nf_flowtable *flow_table,
@@ -775,7 +775,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  	}
  }
 +EXPORT_SYMBOL_GPL(nf_flow_table_iterate);
- 
+
  void nf_flow_table_gc_run(struct nf_flowtable *flow_table)
  {
 --- /dev/null
@@ -801,9 +801,9 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
 @@ -302,6 +302,11 @@ void nf_flow_table_free(struct nf_flowta
- 
+
  void flow_offload_teardown(struct flow_offload *flow);
- 
+
 +int nf_flow_table_iterate(struct nf_flowtable *flow_table,
 +                      void (*iter)(struct nf_flowtable *flowtable,
 +                                   struct flow_offload *flow, void *data),
