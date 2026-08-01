@@ -13,7 +13,7 @@ Signed-off-by: Pablo Neira Ayuso <pablo@netfilter.org>
 @@ -812,6 +812,23 @@ static struct pernet_operations nf_flow_
  	.exit_batch = nf_flow_table_pernet_exit,
  };
- 
+
 +static int nf_flow_table_netdev_event(struct notifier_block *this,
 +				      unsigned long event, void *ptr)
 +{
@@ -37,16 +37,16 @@ Signed-off-by: Pablo Neira Ayuso <pablo@netfilter.org>
 @@ -828,6 +845,10 @@ static int __init nf_flow_table_module_i
  	if (ret)
  		goto out_bpf;
- 
+
 +	ret = register_netdevice_notifier(&flow_offload_netdev_notifier);
 +	if (ret)
 +		goto out_bpf;
 +
  	return 0;
- 
+
  out_bpf:
 @@ -839,6 +860,7 @@ out_offload:
- 
+
  static void __exit nf_flow_table_module_exit(void)
  {
 +	unregister_netdevice_notifier(&flow_offload_netdev_notifier);
@@ -58,7 +58,7 @@ Signed-off-by: Pablo Neira Ayuso <pablo@netfilter.org>
 @@ -234,47 +234,14 @@ static struct nft_expr_type nft_flow_off
  	.owner		= THIS_MODULE,
  };
- 
+
 -static int flow_offload_netdev_event(struct notifier_block *this,
 -				     unsigned long event, void *ptr)
 -{
@@ -96,11 +96,11 @@ Signed-off-by: Pablo Neira Ayuso <pablo@netfilter.org>
 -	return err;
 +	return nft_register_expr(&nft_flow_offload_type);
  }
- 
+
  static void __exit nft_flow_offload_module_exit(void)
  {
  	nft_unregister_expr(&nft_flow_offload_type);
 -	unregister_netdevice_notifier(&flow_offload_netdev_notifier);
  }
- 
+
  module_init(nft_flow_offload_module_init);
