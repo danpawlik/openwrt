@@ -1,0 +1,27 @@
+From: Gong Tao <gongtao0607@gmail.com>
+Date: Sat, 16 Aug 2026 13:51:19 -0700
+Subject: [PATCH] mt7996: disable HW RRO for small BA windows
+
+Hardware receive reorder offload does not handle small block ack
+windows (buf_size < 64) reliably.  This causes packet drops and
+reordering issues for low-bandwidth real-time streams such as
+VoWiFi (RTP/UDP), which negotiate small BA windows.
+
+Fall back to software reordering for BA sessions with buf_size < 64.
+Bulk WiFi traffic (buf_size >= 64) continues to use HW RRO.
+
+Link: https://patchwork.ozlabs.org/project/openwrt/patch/20260816205119.1793197-1-gongtao0607@gmail.com/
+Signed-off-by: Gong Tao <gongtao0607@gmail.com>
+---
+--- a/mt7996/mcu.c
++++ b/mt7996/mcu.c
+@@ -1500,7 +1500,8 @@
+ 	ba->ba_en = enable << params->tid;
+ 	ba->amsdu = params->amsdu;
+ 	ba->tid = params->tid;
+-	ba->ba_rdd_rro = !tx && enable && mt7996_has_hwrro(dev);
++	ba->ba_rdd_rro = !tx && enable && mt7996_has_hwrro(dev) &&
++			 params->buf_size >= 64;
+
+ 	return mt76_mcu_skb_send_msg(&dev->mt76, skb,
+ 				     MCU_WMWA_UNI_CMD(STA_REC_UPDATE), true);
