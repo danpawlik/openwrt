@@ -1,0 +1,93 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [DEBUG] net: airoha: npu: instrument mailbox DMA path
+
+Debug instrumentation for EN7581 NPU mailbox DMA regression.
+Traces buffer alignment, SWIOTLB bounce, and pre/post-unmap buffer
+contents to identify why sub-cacheline DMA_BIDIRECTIONAL mapping
+leaves GET responses as zeros.
+
+NOT FOR MERGE — debug only.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+
+---
+ drivers/net/ethernet/airoha/airoha_npu.c | 47 +++++++++++++++++++++++
+ 1 file changed, 47 insertions(+)
+
+--- a/drivers/net/ethernet/airoha/airoha_npu.c
++++ b/drivers/net/ethernet/airoha/airoha_npu.c
+@@ -5,6 +5,9 @@
+  */
+
+ #include <linux/devcoredump.h>
++#include <linux/dma-direct.h>
++#include <linux/dma-mapping.h>
++#include <linux/swiotlb.h>
+ #include <linux/firmware.h>
+ #include <linux/platform_device.h>
+ #include <linux/of_net.h>
+@@ -165,16 +168,40 @@ static int airoha_npu_send_msg(struct ai
+ {
+ 	u16 core = 0; /* FIXME */
+ 	u32 val, offset = core << 4;
++	unsigned long cache_align = dma_get_cache_alignment();
+ 	dma_addr_t dma_addr;
+ 	int ret;
+
++	dev_info(npu->dev,
++		 "[NPU-DMA] func_id=%d p=%px size=%d cache_align=%lu p_aligned=%d size_aligned=%d\n",
++		 func_id, p, size, cache_align,
++		 IS_ALIGNED((unsigned long)p, cache_align),
++		 IS_ALIGNED(size, cache_align));
++
++	print_hex_dump(KERN_INFO, "[NPU-DMA] pre-map: ", DUMP_PREFIX_OFFSET,
++		       16, 1, p, min_t(int, size, 32), true);
++
+ 	dma_addr = dma_map_single(npu->dev, p, size, DMA_BIDIRECTIONAL);
+ 	ret = dma_mapping_error(npu->dev, dma_addr);
+-	if (ret)
++	if (ret) {
++		dev_err(npu->dev, "[NPU-DMA] dma_map_single FAILED: %d\n", ret);
+ 		return ret;
++	}
++
++	dev_info(npu->dev,
++		 "[NPU-DMA] mapped: dma=%pad dma_aligned=%d is_swiotlb=%d\n",
++		 &dma_addr,
++		 IS_ALIGNED(dma_addr, cache_align),
++		 !!swiotlb_find_pool(npu->dev, dma_to_phys(npu->dev, dma_addr)));
+
+ 	spin_lock_bh(&npu->cores[core].lock);
+
++	/*
++	 * Explicitly sync before NPU reads — should be redundant after
++	 * dma_map_single(BIDIRECTIONAL) but log whether it changes anything.
++	 */
++	dma_sync_single_for_device(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
++
+ 	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(0) + offset, dma_addr);
+ 	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(1) + offset, size);
+ 	regmap_read(npu->regmap, REG_CR_MBQ0_CTRL(2) + offset, &val);
+@@ -189,10 +216,22 @@ static int airoha_npu_send_msg(struct ai
+ 	if (!ret && FIELD_GET(MBOX_MSG_STATUS, val) != NPU_MBOX_SUCCESS)
+ 		ret = -EINVAL;
+
++	dev_info(npu->dev, "[NPU-DMA] mbox done: ret=%d mbox_status=0x%x\n",
++		 ret, val);
++
+ 	spin_unlock_bh(&npu->cores[core].lock);
+
++	/* Sync for CPU before unmap — see if explicit sync changes result */
++	dma_sync_single_for_cpu(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
++
++	print_hex_dump(KERN_INFO, "[NPU-DMA] post-sync pre-unmap: ",
++		       DUMP_PREFIX_OFFSET, 16, 1, p, min_t(int, size, 32), true);
++
+ 	dma_unmap_single(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
+
++	print_hex_dump(KERN_INFO, "[NPU-DMA] post-unmap: ", DUMP_PREFIX_OFFSET,
++		       16, 1, p, min_t(int, size, 32), true);
++
+ 	return ret;
+ }
+
