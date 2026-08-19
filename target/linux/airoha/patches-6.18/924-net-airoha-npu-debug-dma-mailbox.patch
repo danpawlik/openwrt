@@ -4,15 +4,16 @@ Subject: [DEBUG] net: airoha: npu: instrument mailbox DMA path
 Debug instrumentation for EN7581 NPU mailbox DMA regression.
 Traces buffer alignment, SWIOTLB bounce, and pre/post-unmap buffer
 contents to identify why sub-cacheline DMA_BIDIRECTIONAL mapping
-leaves GET responses as zeros.
+leaves GET responses as zeros. Includes direct bounce-buffer read
+to distinguish swiotlb copy-back failure from NPU addressing failure.
 
 NOT FOR MERGE — debug only.
 
 Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 
 ---
- drivers/net/ethernet/airoha/airoha_npu.c | 47 +++++++++++++++++++++++
- 1 file changed, 47 insertions(+)
+ drivers/net/ethernet/airoha/airoha_npu.c | 57 +++++++++++++++++++++++
+ 1 file changed, 57 insertions(+)
 
 --- a/drivers/net/ethernet/airoha/airoha_npu.c
 +++ b/drivers/net/ethernet/airoha/airoha_npu.c
@@ -68,7 +69,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(0) + offset, dma_addr);
  	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(1) + offset, size);
  	regmap_read(npu->regmap, REG_CR_MBQ0_CTRL(2) + offset, &val);
-@@ -189,10 +216,22 @@ static int airoha_npu_send_msg(struct ai
+@@ -189,10 +216,39 @@ static int airoha_npu_send_msg(struct ai
  	if (!ret && FIELD_GET(MBOX_MSG_STATUS, val) != NPU_MBOX_SUCCESS)
  		ret = -EINVAL;
 
@@ -77,6 +78,23 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +
  	spin_unlock_bh(&npu->cores[core].lock);
 
++	/*
++	 * Read bounce buffer DIRECTLY before swiotlb copies back.
++	 * If bounce has NPU response: swiotlb copy-back is broken.
++	 * If bounce matches pre-map: NPU can't write to bounce region.
++	 */
++	{
++		phys_addr_t bounce_phys = dma_to_phys(npu->dev, dma_addr);
++		void *bounce_virt = phys_to_virt(bounce_phys);
++
++		dev_info(npu->dev,
++			 "[NPU-DMA] bounce phys=%pa virt=%px (orig p=%px)\n",
++			 &bounce_phys, bounce_virt, p);
++		print_hex_dump(KERN_INFO, "[NPU-DMA] bounce-direct: ",
++			       DUMP_PREFIX_OFFSET, 16, 1, bounce_virt,
++			       min_t(int, size, 32), true);
++	}
++
 +	/* Sync for CPU before unmap — see if explicit sync changes result */
 +	dma_sync_single_for_cpu(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
 +
