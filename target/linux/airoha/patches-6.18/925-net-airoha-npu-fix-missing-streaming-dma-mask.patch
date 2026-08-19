@@ -1,0 +1,31 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [DEBUG] net: airoha: npu: set streaming DMA mask to avoid swiotlb
+
+The driver only calls dma_set_coherent_mask() but never dma_set_mask().
+On this non-coherent ARM64 platform (EN7581), that forces every
+dma_map_single() through swiotlb bounce buffers. Debug tracing shows the
+NPU firmware permanently hangs after ~41 bounce-buffered mailbox calls.
+
+Replace dma_set_coherent_mask() with dma_set_mask_and_coherent() so
+streaming DMA maps directly without swiotlb bounce, matching the
+coherent path behavior.
+
+NOT FOR MERGE — debug verification step.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+
+---
+ drivers/net/ethernet/airoha/airoha_npu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_npu.c
++++ b/drivers/net/ethernet/airoha/airoha_npu.c
+@@ -769,7 +769,7 @@ static int airoha_npu_probe(struct platf
+ 		npu->irqs[i] = irq;
+ 	}
+
+-	err = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
++	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+ 	if (err)
+ 		return err;
+
