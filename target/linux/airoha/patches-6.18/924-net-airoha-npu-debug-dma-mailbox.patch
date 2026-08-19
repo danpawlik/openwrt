@@ -3,31 +3,32 @@ Subject: [DEBUG] net: airoha: npu: instrument mailbox DMA path
 
 Debug instrumentation for EN7581 NPU mailbox DMA regression.
 Traces buffer alignment, SWIOTLB bounce, and pre/post-unmap buffer
-contents to identify why sub-cacheline DMA_BIDIRECTIONAL mapping
-leaves GET responses as zeros. Includes direct bounce-buffer read
-to distinguish swiotlb copy-back failure from NPU addressing failure.
+contents. Reads bounce buffer directly via phys_to_virt with
+dcache_inval_poc to bypass stale CPU cache and determine whether NPU
+actually writes to the bounce buffer address.
 
 NOT FOR MERGE — debug only.
 
 Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 
 ---
- drivers/net/ethernet/airoha/airoha_npu.c | 57 +++++++++++++++++++++++
- 1 file changed, 57 insertions(+)
+ drivers/net/ethernet/airoha/airoha_npu.c | 63 +++++++++++++++++++++++
+ 1 file changed, 63 insertions(+)
 
 --- a/drivers/net/ethernet/airoha/airoha_npu.c
 +++ b/drivers/net/ethernet/airoha/airoha_npu.c
-@@ -5,6 +5,9 @@
+@@ -5,6 +5,10 @@
   */
 
  #include <linux/devcoredump.h>
++#include <asm/cacheflush.h>
 +#include <linux/dma-direct.h>
 +#include <linux/dma-mapping.h>
 +#include <linux/swiotlb.h>
  #include <linux/firmware.h>
  #include <linux/platform_device.h>
  #include <linux/of_net.h>
-@@ -165,16 +168,40 @@ static int airoha_npu_send_msg(struct ai
+@@ -165,16 +169,40 @@ static int airoha_npu_send_msg(struct ai
  {
  	u16 core = 0; /* FIXME */
  	u32 val, offset = core << 4;
@@ -69,7 +70,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(0) + offset, dma_addr);
  	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(1) + offset, size);
  	regmap_read(npu->regmap, REG_CR_MBQ0_CTRL(2) + offset, &val);
-@@ -189,10 +216,39 @@ static int airoha_npu_send_msg(struct ai
+@@ -189,10 +217,44 @@ static int airoha_npu_send_msg(struct ai
  	if (!ret && FIELD_GET(MBOX_MSG_STATUS, val) != NPU_MBOX_SUCCESS)
  		ret = -EINVAL;
 
@@ -80,12 +81,17 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 
 +	/*
 +	 * Read bounce buffer DIRECTLY before swiotlb copies back.
-+	 * If bounce has NPU response: swiotlb copy-back is broken.
-+	 * If bounce matches pre-map: NPU can't write to bounce region.
++	 * Invalidate CPU cache first — bounce was cached during map.
++	 * Use cache-line-aligned range so dcache_inval_poc does pure
++	 * invalidate (no clean-writeback of stale data).
 +	 */
 +	{
 +		phys_addr_t bounce_phys = dma_to_phys(npu->dev, dma_addr);
 +		void *bounce_virt = phys_to_virt(bounce_phys);
++		unsigned long inv_start = (unsigned long)bounce_virt & ~63UL;
++		unsigned long inv_end = ALIGN((unsigned long)bounce_virt + size, 64);
++
++		dcache_inval_poc(inv_start, inv_end);
 +
 +		dev_info(npu->dev,
 +			 "[NPU-DMA] bounce phys=%pa virt=%px (orig p=%px)\n",
