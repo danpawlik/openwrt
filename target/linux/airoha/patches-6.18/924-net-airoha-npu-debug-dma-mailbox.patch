@@ -2,18 +2,19 @@ From: Daniel Pawlik <pawlik.dan@gmail.com>
 Subject: [DEBUG] net: airoha: npu: instrument mailbox DMA path
 
 Debug instrumentation for EN7581 NPU mailbox DMA regression.
-Traces buffer alignment, SWIOTLB bounce, and pre/post-unmap buffer
-contents. Reads bounce buffer directly via phys_to_virt with
-dcache_inval_poc to bypass stale CPU cache and determine whether NPU
-actually writes to the bounce buffer address.
+Traces buffer alignment, SWIOTLB bounce, pre/post-unmap buffer
+contents, direct bounce-buffer read with cache invalidation, and
+original-buffer physical memory read to check if NPU writes response
+to original address instead of bounce address. Logs device DMA mask
+and buffer physical address to diagnose why swiotlb bounce persists.
 
 NOT FOR MERGE — debug only.
 
 Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 
 ---
- drivers/net/ethernet/airoha/airoha_npu.c | 63 +++++++++++++++++++++++
- 1 file changed, 63 insertions(+)
+ drivers/net/ethernet/airoha/airoha_npu.c | 75 +++++++++++++++++++++++
+ 1 file changed, 75 insertions(+)
 
 --- a/drivers/net/ethernet/airoha/airoha_npu.c
 +++ b/drivers/net/ethernet/airoha/airoha_npu.c
@@ -28,7 +29,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  #include <linux/firmware.h>
  #include <linux/platform_device.h>
  #include <linux/of_net.h>
-@@ -165,16 +169,40 @@ static int airoha_npu_send_msg(struct ai
+@@ -165,16 +169,41 @@ static int airoha_npu_send_msg(struct ai
  {
  	u16 core = 0; /* FIXME */
  	u32 val, offset = core << 4;
@@ -37,10 +38,11 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  	int ret;
 
 +	dev_info(npu->dev,
-+		 "[NPU-DMA] func_id=%d p=%px size=%d cache_align=%lu p_aligned=%d size_aligned=%d\n",
-+		 func_id, p, size, cache_align,
++		 "[NPU-DMA] func_id=%d p=%px phys=%pa size=%d cache_align=%lu p_aligned=%d size_aligned=%d dma_mask=0x%llx\n",
++		 func_id, p, &(phys_addr_t){virt_to_phys(p)}, size, cache_align,
 +		 IS_ALIGNED((unsigned long)p, cache_align),
-+		 IS_ALIGNED(size, cache_align));
++		 IS_ALIGNED(size, cache_align),
++		 *npu->dev->dma_mask);
 +
 +	print_hex_dump(KERN_INFO, "[NPU-DMA] pre-map: ", DUMP_PREFIX_OFFSET,
 +		       16, 1, p, min_t(int, size, 32), true);
@@ -70,7 +72,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(0) + offset, dma_addr);
  	regmap_write(npu->regmap, REG_CR_MBQ0_CTRL(1) + offset, size);
  	regmap_read(npu->regmap, REG_CR_MBQ0_CTRL(2) + offset, &val);
-@@ -189,10 +217,44 @@ static int airoha_npu_send_msg(struct ai
+@@ -189,10 +218,56 @@ static int airoha_npu_send_msg(struct ai
  	if (!ret && FIELD_GET(MBOX_MSG_STATUS, val) != NPU_MBOX_SUCCESS)
  		ret = -EINVAL;
 
@@ -98,6 +100,18 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +			 &bounce_phys, bounce_virt, p);
 +		print_hex_dump(KERN_INFO, "[NPU-DMA] bounce-direct: ",
 +			       DUMP_PREFIX_OFFSET, 16, 1, bounce_virt,
++			       min_t(int, size, 32), true);
++	}
++
++	/* Check if NPU wrote to original buffer's physical address instead */
++	{
++		unsigned long orig_start = (unsigned long)p & ~63UL;
++		unsigned long orig_end = ALIGN((unsigned long)p + size, 64);
++
++		dcache_inval_poc(orig_start, orig_end);
++
++		print_hex_dump(KERN_INFO, "[NPU-DMA] orig-nocache: ",
++			       DUMP_PREFIX_OFFSET, 16, 1, p,
 +			       min_t(int, size, 32), true);
 +	}
 +
