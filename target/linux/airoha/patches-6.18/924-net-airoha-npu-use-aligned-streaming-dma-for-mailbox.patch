@@ -1,0 +1,67 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: net: airoha: npu: use cache-line-aligned streaming DMA for mailbox
+
+The NPU mailbox uses dma_map_single() with small buffers (12-24 bytes)
+on a non-coherent ARM64 platform (EN7581). When the buffer size is not
+a multiple of the cache line size (64 bytes), the kernel's
+dma_direct_map_page() forces swiotlb bounce buffering via:
+
+  !IS_ALIGNED(phys | size, dma_get_cache_alignment())
+
+The EN7581 NPU cannot DMA-write to the swiotlb bounce buffer address
+range — it reads commands fine but never writes responses back, causing
+the driver to read stale data (NPU version 0.0, missing response
+fields).
+
+Fix by allocating a cache-line-aligned DMA buffer via kmalloc (which
+returns cache-line-aligned pointers on ARM64) with size rounded up to
+dma_get_cache_alignment(). This eliminates swiotlb bounce entirely and
+allows the NPU to DMA-write responses directly.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+
+---
+ drivers/net/ethernet/airoha/airoha_npu.c | 22 +++++++++++++++++-----
+ 1 file changed, 17 insertions(+), 5 deletions(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_npu.c
++++ b/drivers/net/ethernet/airoha/airoha_npu.c
+@@ -163,13 +163,23 @@ static int airoha_npu_send_msg(struct ai
+ {
+ 	u16 core = 0; /* FIXME */
+ 	u32 val, offset = core << 4;
++	int aligned_size = ALIGN(size, dma_get_cache_alignment());
+ 	dma_addr_t dma_addr;
++	void *dma_buf;
+ 	int ret;
+
+-	dma_addr = dma_map_single(npu->dev, p, size, DMA_BIDIRECTIONAL);
++	dma_buf = kmalloc(aligned_size, GFP_KERNEL);
++	if (!dma_buf)
++		return -ENOMEM;
++
++	memcpy(dma_buf, p, size);
++	memset(dma_buf + size, 0, aligned_size - size);
++
++	dma_addr = dma_map_single(npu->dev, dma_buf, aligned_size,
++				  DMA_BIDIRECTIONAL);
+ 	ret = dma_mapping_error(npu->dev, dma_addr);
+-	if (ret)
++	if (ret) {
++		kfree(dma_buf);
+ 		return ret;
++	}
+
+ 	spin_lock_bh(&npu->cores[core].lock);
+
+@@ -189,7 +199,9 @@ static int airoha_npu_send_msg(struct ai
+
+ 	spin_unlock_bh(&npu->cores[core].lock);
+
+-	dma_unmap_single(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
++	dma_unmap_single(npu->dev, dma_addr, aligned_size, DMA_BIDIRECTIONAL);
++	memcpy(p, dma_buf, size);
++	kfree(dma_buf);
+
+ 	return ret;
+ }
