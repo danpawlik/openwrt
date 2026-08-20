@@ -26,7 +26,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 
 --- a/drivers/net/ethernet/airoha/airoha_npu.c
 +++ b/drivers/net/ethernet/airoha/airoha_npu.c
-@@ -163,13 +163,23 @@ static int airoha_npu_send_msg(struct ai
+@@ -163,13 +163,25 @@ static int airoha_npu_send_msg(struct ai
  {
  	u16 core = 0; /* FIXME */
  	u32 val, offset = core << 4;
