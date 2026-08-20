@@ -1,0 +1,147 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: net: airoha: npu: use cacheline-sized buffers for mailbox DMA
+
+On non-coherent ARM64 (EN7581), the kernel's dma_direct_map_page()
+forces swiotlb bounce buffering when:
+
+  !IS_ALIGNED(phys | size, dma_get_cache_alignment())
+
+The NPU mailbox buffers are 12-24 bytes, well below the 64-byte cache
+line size, so this check always fails regardless of physical address
+alignment. The swiotlb sync path itself works correctly, but the
+EN7581 NPU cannot DMA-write to the swiotlb bounce buffer address
+range -- it reads commands fine (mbox_status=0x7 success) but never
+writes responses back, leaving response fields as zeros.
+
+This was confirmed through five boot traces on a Gemtek W1700K:
+
+  - Boots 1-4: all streaming DMA through swiotlb (is_swiotlb=1),
+    bounce buffer byte-identical to pre-map after NPU completion,
+    even after explicit CPU cache invalidation (dcache_inval_poc).
+    NPU version reads 0.0.
+
+  - Boot 5: kmalloc'd cache-line-aligned buffer bypasses swiotlb
+    (is_swiotlb=0 on all 169 mappings), NPU writes response data
+    directly, version reads 0.1111, WiFi fully functional.
+
+Fix by rounding mailbox buffer allocations up to
+dma_get_cache_alignment() and mapping the rounded length. The original
+payload size is still programmed into the mailbox length register.
+kmalloc returns cache-line-aligned pointers on ARM64 for allocations
+>= ARCH_KMALLOC_MINALIGN, so the IS_ALIGNED check passes and swiotlb
+is not triggered.
+
+Fixes: 6f884eb87a79 ("net: airoha: Fix DMA direction for NPU mailbox buffer")
+Link: https://patchwork.kernel.org/project/linux-mediatek/patch/20260814110017.2795022-1-pawlik.dan@gmail.com/
+Assisted-by: Claude:claude-opus-4-6
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+
+---
+ drivers/net/ethernet/airoha/airoha_npu.c | 25 +++++++++++++++---------
+ 1 file changed, 16 insertions(+), 9 deletions(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_npu.c
++++ b/drivers/net/ethernet/airoha/airoha_npu.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include <linux/devcoredump.h>
++#include <linux/dma-mapping.h>
+ #include <linux/firmware.h>
+ #include <linux/platform_device.h>
+ #include <linux/of_net.h>
+@@ -160,15 +161,21 @@ struct wlan_mbox_data {
+ 	DECLARE_FLEX_ARRAY(u8, d);
+ };
+ 
++static size_t airoha_npu_mbox_size(size_t len)
++{
++	return ALIGN(len, dma_get_cache_alignment());
++}
++
+ static int airoha_npu_send_msg(struct airoha_npu *npu, int func_id,
+ 			       void *p, int size)
+ {
+ 	u16 core = 0; /* FIXME */
+ 	u32 val, offset = core << 4;
+ 	dma_addr_t dma_addr;
++	size_t map_len = airoha_npu_mbox_size(size);
+ 	int ret;
+ 
+-	dma_addr = dma_map_single(npu->dev, p, size, DMA_BIDIRECTIONAL);
++	dma_addr = dma_map_single(npu->dev, p, map_len, DMA_BIDIRECTIONAL);
+ 	ret = dma_mapping_error(npu->dev, dma_addr);
+ 	if (ret)
+ 		return ret;
+@@ -191,7 +198,7 @@ static int airoha_npu_send_msg(struct ai
+ 
+ 	spin_unlock_bh(&npu->cores[core].lock);
+ 
+-	dma_unmap_single(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
++	dma_unmap_single(npu->dev, dma_addr, map_len, DMA_BIDIRECTIONAL);
+ 
+ 	return ret;
+ }
+@@ -333,7 +340,7 @@ static int airoha_npu_ppe_init(struct ai
+ 	struct ppe_mbox_data *ppe_data;
+ 	int err;
+ 
+-	ppe_data = kzalloc(sizeof(*ppe_data), GFP_KERNEL);
++	ppe_data = kzalloc(airoha_npu_mbox_size(sizeof(*ppe_data)), GFP_KERNEL);
+ 	if (!ppe_data)
+ 		return -ENOMEM;
+ 
+@@ -354,7 +361,7 @@ static int airoha_npu_ppe_deinit(struct
+ 	struct ppe_mbox_data *ppe_data;
+ 	int err;
+ 
+-	ppe_data = kzalloc(sizeof(*ppe_data), GFP_KERNEL);
++	ppe_data = kzalloc(airoha_npu_mbox_size(sizeof(*ppe_data)), GFP_KERNEL);
+ 	if (!ppe_data)
+ 		return -ENOMEM;
+ 
+@@ -375,7 +382,7 @@ static int airoha_npu_ppe_flush_sram_ent
+ 	struct ppe_mbox_data *ppe_data;
+ 	int err;
+ 
+-	ppe_data = kzalloc(sizeof(*ppe_data), GFP_KERNEL);
++	ppe_data = kzalloc(airoha_npu_mbox_size(sizeof(*ppe_data)), GFP_KERNEL);
+ 	if (!ppe_data)
+ 		return -ENOMEM;
+ 
+@@ -399,7 +406,7 @@ static int airoha_npu_foe_commit_entry(s
+ 	struct ppe_mbox_data *ppe_data;
+ 	int err;
+ 
+-	ppe_data = kzalloc(sizeof(*ppe_data), GFP_ATOMIC);
++	ppe_data = kzalloc(airoha_npu_mbox_size(sizeof(*ppe_data)), GFP_ATOMIC);
+ 	if (!ppe_data)
+ 		return -ENOMEM;
+ 
+@@ -434,7 +441,7 @@ static int airoha_npu_ppe_stats_setup(st
+ 	int err, size = num_stats_entries * sizeof(*npu->stats);
+ 	struct ppe_mbox_data *ppe_data;
+ 
+-	ppe_data = kzalloc(sizeof(*ppe_data), GFP_ATOMIC);
++	ppe_data = kzalloc(airoha_npu_mbox_size(sizeof(*ppe_data)), GFP_ATOMIC);
+ 	if (!ppe_data)
+ 		return -ENOMEM;
+ 
+@@ -466,7 +473,7 @@ static int airoha_npu_wlan_msg_send(stru
+ 	int err, len;
+ 
+ 	len = sizeof(*wlan_data) + data_len;
+-	wlan_data = kzalloc(len, gfp);
++	wlan_data = kzalloc(airoha_npu_mbox_size(len), gfp);
+ 	if (!wlan_data)
+ 		return -ENOMEM;
+ 
+@@ -489,7 +496,7 @@ static int airoha_npu_wlan_msg_get(struc
+ 	int err, len;
+ 
+ 	len = sizeof(*wlan_data) + data_len;
+-	wlan_data = kzalloc(len, gfp);
++	wlan_data = kzalloc(airoha_npu_mbox_size(len), gfp);
+ 	if (!wlan_data)
+ 		return -ENOMEM;
+ 
