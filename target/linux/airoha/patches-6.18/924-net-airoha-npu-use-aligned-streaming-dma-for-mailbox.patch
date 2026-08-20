@@ -34,7 +34,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  	dma_addr_t dma_addr;
 +	void *dma_buf;
  	int ret;
-
+ 
 -	dma_addr = dma_map_single(npu->dev, p, size, DMA_BIDIRECTIONAL);
 +	dma_buf = kmalloc(aligned_size, GFP_KERNEL);
 +	if (!dma_buf)
@@ -51,17 +51,17 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +		kfree(dma_buf);
  		return ret;
 +	}
-
+ 
  	spin_lock_bh(&npu->cores[core].lock);
-
+ 
 @@ -189,7 +199,9 @@ static int airoha_npu_send_msg(struct ai
-
+ 
  	spin_unlock_bh(&npu->cores[core].lock);
-
+ 
 -	dma_unmap_single(npu->dev, dma_addr, size, DMA_BIDIRECTIONAL);
 +	dma_unmap_single(npu->dev, dma_addr, aligned_size, DMA_BIDIRECTIONAL);
 +	memcpy(p, dma_buf, size);
 +	kfree(dma_buf);
-
+ 
  	return ret;
  }
