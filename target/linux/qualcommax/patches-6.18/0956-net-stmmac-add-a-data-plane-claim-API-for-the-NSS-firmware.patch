@@ -1,0 +1,180 @@
+From: Stanislaw Pal <kuncy7@gmail.com>
+Subject: [PATCH] net: stmmac: add a data-plane claim API for the NSS firmware
+
+The NSS (UBI32) firmware on IPQ5018 accelerates ethernet by driving the
+Synopsys GMAC DMA directly with its own descriptor rings. Add a small
+claim API so the qca-dwmac-nss glue module can park the host data path
+(TX drained, NAPI off, DMA stopped) and take over ndo_start_xmit before
+handing the controller to the firmware, while phylink keeps managing
+the link and relays transitions to the claim owner.
+
+Releasing the claim leaves TX disabled; the owner bounces the interface
+to reinit the host DMA from scratch (see qca_dwmac.h for the contract).
+
+Signed-off-by: Stanislaw Pal <kuncy7@gmail.com>
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac.h
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac.h
+@@ -25,6 +25,8 @@
+ #include <net/xdp.h>
+ #include <uapi/linux/bpf.h>
+ 
++struct qca_dwmac_dp_owner;
++
+ struct stmmac_resources {
+ 	void __iomem *addr;
+ 	u8 mac[ETH_ALEN];
+@@ -275,6 +277,10 @@ struct stmmac_priv {
+ 	struct phylink_config phylink_config;
+ 	struct phylink *phylink;
+ 
++	/* qca-dwmac-nss: NSS firmware data-plane override */
++	const struct qca_dwmac_dp_owner *dp_owner;
++	void *dp_ctx;
++
+ 	struct stmmac_extra_stats xstats ____cacheline_aligned_in_smp;
+ 	struct stmmac_safety_stats sstats;
+ 	struct plat_stmmacenet_data *plat;
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -43,6 +43,7 @@
+ #include <net/page_pool/helpers.h>
+ #include <net/pkt_cls.h>
+ #include <net/xdp_sock_drv.h>
++#include <linux/soc/qcom/qca_dwmac.h>
+ #include "stmmac_ptp.h"
+ #include "stmmac_fpe.h"
+ #include "stmmac.h"
+@@ -866,6 +867,9 @@ static void stmmac_mac_link_down(struct
+ {
+ 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
+ 
++	if (priv->dp_owner && priv->dp_owner->link_down)
++		priv->dp_owner->link_down(priv->dp_ctx);
++
+ 	stmmac_mac_set(priv, priv->ioaddr, false);
+ 	if (priv->dma_cap.eee)
+ 		stmmac_set_eee_pls(priv, priv->hw, false);
+@@ -975,6 +979,9 @@ static void stmmac_mac_link_up(struct ph
+ 
+ 	if (priv->plat->flags & STMMAC_FLAG_HWTSTAMP_CORRECT_LATENCY)
+ 		stmmac_hwtstamp_correct_latency(priv, priv);
++
++	if (priv->dp_owner && priv->dp_owner->link_up)
++		priv->dp_owner->link_up(priv->dp_ctx);
+ }
+ 
+ static void stmmac_mac_disable_tx_lpi(struct phylink_config *config)
+@@ -2363,6 +2370,103 @@ static void stmmac_stop_all_dma(struct s
+ }
+ 
+ /**
++ * qca_dwmac_dp_claim - hand the data plane of a dwmac netdev to an owner
++ * @dev: stmmac netdev, must be running
++ * @owner: callbacks taking over TX and receiving link transitions
++ * @ctx: cookie passed back through every callback
++ *
++ * Parks the host data path (TX drained, NAPI off, DMA channels stopped)
++ * and redirects ndo_start_xmit to @owner->xmit. The MAC stays enabled and
++ * phylink keeps managing the link; transitions are relayed through
++ * @owner->link_up/link_down. Caller holds rtnl. See qca_dwmac.h for the
++ * release contract.
++ */
++int qca_dwmac_dp_claim(struct net_device *dev,
++		       const struct qca_dwmac_dp_owner *owner, void *ctx)
++{
++	struct stmmac_priv *priv;
++
++	ASSERT_RTNL();
++
++	if (!dev || !owner || !owner->xmit ||
++	    dev->netdev_ops != &stmmac_netdev_ops)
++		return -EINVAL;
++
++	priv = netdev_priv(dev);
++
++	if (priv->dp_owner)
++		return -EBUSY;
++
++	if (!netif_running(dev))
++		return -ENETDOWN;
++
++	/*
++	 * Quiesce the host data path in dependency order: no new TX (and no
++	 * CPU left inside ndo_start_xmit once netif_tx_disable returns), no
++	 * NAPI polls, then the DMA channels themselves. RX buffers stay
++	 * allocated but unused; the firmware brings its own rings.
++	 */
++	netif_tx_disable(dev);
++	stmmac_disable_all_queues(priv);
++	stmmac_stop_all_dma(priv);
++
++	priv->dp_ctx = ctx;
++	/* xmit hook reads dp_owner without a lock: publish ctx first */
++	smp_wmb();
++	WRITE_ONCE(priv->dp_owner, owner);
++
++	netif_tx_wake_all_queues(dev);
++
++	netdev_info(dev, "qca-dwmac: data plane claimed\n");
++	return 0;
++}
++EXPORT_SYMBOL(qca_dwmac_dp_claim);
++
++/**
++ * qca_dwmac_dp_release - take the data plane back from the claim owner
++ * @dev: previously claimed stmmac netdev
++ *
++ * Stops TX (nothing may run the owner's xmit after return) and drops the
++ * redirect. Deliberately does NOT restart the host DMA: its ring state is
++ * stale after the firmware owned the controller, so TX queues are left
++ * disabled and the caller must bounce the interface (dev_close/dev_open,
++ * still under rtnl) to reinit the host data path from scratch.
++ */
++int qca_dwmac_dp_release(struct net_device *dev)
++{
++	struct stmmac_priv *priv;
++
++	ASSERT_RTNL();
++
++	if (!dev || dev->netdev_ops != &stmmac_netdev_ops)
++		return -EINVAL;
++
++	priv = netdev_priv(dev);
++
++	if (!priv->dp_owner)
++		return -ENOENT;
++
++	netif_tx_disable(dev);
++	WRITE_ONCE(priv->dp_owner, NULL);
++	priv->dp_ctx = NULL;
++
++	/*
++	 * Claim parked NAPI with stmmac_disable_all_queues(); give it back
++	 * enabled, because whatever follows release - stmmac_release() on an
++	 * interface going down, or the caller's restorative dev_close() -
++	 * will disable it again, and a second napi_disable() without an
++	 * enable in between blocks forever (measured: reboot hangs right
++	 * after "Link is Down"). The DMA channels stay stopped and no IRQs
++	 * are live, so the re-enabled NAPI sits idle until then.
++	 */
++	stmmac_enable_all_queues(priv);
++
++	netdev_info(dev, "qca-dwmac: data plane released, bounce the interface to restore host DMA\n");
++	return 0;
++}
++EXPORT_SYMBOL(qca_dwmac_dp_release);
++
++/**
+  *  stmmac_dma_operation_mode - HW DMA operation mode
+  *  @priv: driver private structure
+  *  Description: it is used for configuring the DMA operation mode register in
+@@ -4457,6 +4561,9 @@ static netdev_tx_t stmmac_xmit(struct sk
+ 	dma_addr_t des;
+ 	u32 sdu_len;
+ 
++	if (unlikely(READ_ONCE(priv->dp_owner)))
++		return priv->dp_owner->xmit(skb, priv->dp_ctx);
++
+ 	tx_q = &priv->dma_conf.tx_queue[queue];
+ 	txq_stats = &priv->xstats.txq_stats[queue];
+ 	first_tx = tx_q->cur_tx;
