@@ -1,0 +1,27 @@
+From: Stefan <stefdo61@gmail.com>
+Subject: [PATCH] arm64: dts: qcom: ipq5018: add NSS reserved memory
+
+The UBI32 network subsystem loads its firmware at a fixed physical
+address of 0x40000000 and uses the region below it for its descriptor
+rings.  Reserve 16 MiB there, matching the downstream QSDK layout for
+IPQ5018 (single UBI core).
+
+Signed-off-by: Stefan <stefdo61@gmail.com>
+---
+ arch/arm64/boot/dts/qcom/ipq5018.dtsi | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+--- a/arch/arm64/boot/dts/qcom/ipq5018.dtsi
++++ b/arch/arm64/boot/dts/qcom/ipq5018.dtsi
+@@ -136,6 +136,11 @@
+ 		#size-cells = <2>;
+ 		ranges;
+ 
++		nss_region: memory@40000000 {
++			reg = <0x0 0x40000000 0x0 0x1000000>;
++			no-map;
++		};
++
+ 		tz_apps@4a400000 {
+ 			reg = <0x0 0x4a400000 0x0 0x400000>;
+ 			no-map;

@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * NSS (UBI32) node for IPQ5018.
+ *
+ * The feature list below is trimmed to what the MP firmware blob actually
+ * implements, as established by exhaustive dynamic-interface allocation
+ * probing on a GL-B3000 running fw 12.2-156 / 12.5-210 (identical blobs):
+ * no crypto family (IPSEC/DTLS/TLS/QVPN), no PORTID, no CLMAP, no PVXLAN,
+ * no CAPWAP and no GRE_REDIR family.  Advertising them here only makes
+ * nss-drv register handlers the firmware will never answer.
+ */
+
+&soc {
+	nss-common {
+		compatible = "qcom,nss-common";
+		reg = <0x01868010 0x01>;
+		reg-names = "nss-misc-reset";
+		memory-region = <&nss_region>;
+	};
+
+	nss0: nss@40000000 {
+		compatible = "qcom,nss";
+		interrupts = <GIC_SPI 402 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 401 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 400 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 399 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 398 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 397 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 396 IRQ_TYPE_EDGE_RISING>,
+			     <GIC_SPI 395 IRQ_TYPE_EDGE_RISING>;
+		reg = <0x07a00000 0x100>,
+		      <0x0b111000 0x1000>;
+		reg-names = "nphys",
+			    "qgic-phys";
+		clocks = <&gcc GCC_UBI0_CFG_CLK>,
+			 <&gcc GCC_UBI0_DBG_CLK>,
+			 <&gcc GCC_UBI0_CORE_CLK>,
+			 <&gcc GCC_UBI0_UTCM_CLK>,
+			 <&gcc GCC_UBI0_AXI_CLK>,
+			 <&gcc GCC_SNOC_UBI0_AXI_CLK>,
+			 <&gcc GCC_UBI0_NC_AXI_CLK>;
+		clock-names = "nss-cfg-clk",
+			      "nss-dbg-clk",
+			      "nss-core-clk",
+			      "nss-utcm-clk",
+			      "nss-axi-clk",
+			      "nss-snoc-axi-clk",
+			      "nss-nc-axi-clk";
+		qcom,id = <0>;
+		qcom,num-queue = <4>;
+		qcom,num-irq = <8>;
+		qcom,num-pri = <4>;
+		qcom,load-addr = <0x40000000>;
+		qcom,low-frequency = <850000000>;
+		qcom,mid-frequency = <850000000>;
+		qcom,max-frequency = <1000000000>;
+		qcom,ipv4-enabled;
+		qcom,ipv4-reasm-enabled;
+		qcom,ipv6-enabled;
+		qcom,ipv6-reasm-enabled;
+		qcom,tun6rd-enabled;
+		qcom,l2tpv2-enabled;
+		qcom,gre-enabled;
+		qcom,map-t-enabled;
+		qcom,pppoe-enabled;
+		qcom,pptp-enabled;
+		qcom,tunipip6-enabled;
+		qcom,shaping-enabled;
+		/*
+		 * Gates nss_vlan_register_handler(), which is what initialises
+		 * the VLAN message semaphore. Without it the first VLAN message
+		 * from the vlan manager takes an uninitialised semaphore and
+		 * panics the kernel (measured: "ip link add link eth0 ... type
+		 * vlan" -> Oops in ___down_common). Type 17 is present in the
+		 * MP firmware.
+		 */
+		qcom,vlan-enabled;
+		qcom,vxlan-enabled;
+		qcom,match-enabled;
+		qcom,mirror-enabled;
+		qcom,wlanredirect-enabled;
+		qcom,wlan-dataplane-offload-enabled;
+		qcom,rmnet_rx-enabled;
+	};
+};
+
+&wifi {
+	/* IPQ5018 built-in 2.4 GHz radio.
+	 *
+	 * Consumed by the 999-943 ath11k patch: 0 is
+	 * NSS_WIFILI_LOW_PRIORITY_SCHEME, which keeps the radio's firmware
+	 * thread below the one serving the ethernet phys_if egress - there
+	 * is only one UBI32 core on this SoC and without this property the
+	 * pdev lands on the HIGH priority scheme (scheme_id 0 from kzalloc).
+	 */
+	nss-radio-priority = <0>;
+};
