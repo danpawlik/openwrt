@@ -1,0 +1,20 @@
+DEBUG E25 - ustaw peer_memory_size w PEER_CREATE (bylo 0 z kzalloc);
+test hipotezy zwisu phys_if przy asocjacji klienta. Nie wysylac.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -2446,6 +2446,14 @@
+ 	peer_msg->nss_peer_mem = peer->nss.paddr;
+ 	peer_msg->psta_vdev_id = peer->vdev_id;
+ 
++	/* DEBUG E25: tell the firmware how large the peer buffer the host
++	 * mapped is. The message was leaving this zero (kzalloc), and the
++	 * firmware knows a PEER_MEMORY_INSUFFICIENT_FROM_HOST error - a peer
++	 * the firmware refuses on association is a candidate for the silent
++	 * phys_if egress wedge seen the moment a client connects.
++	 */
++	peer_msg->peer_memory_size = WIFILI_NSS_PEER_BYTE_SIZE;
++
+ 	msg_cb = (nss_wifili_msg_callback_t)ath11k_nss_wifili_event_receive;
+ 
+ 	nss_cmn_msg_init(&wlmsg->cm, ab->nss.if_num,

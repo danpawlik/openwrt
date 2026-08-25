@@ -1,0 +1,29 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 14:38:02.238729627 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 14:38:02.253729751 +0200
+@@ -20,6 +20,12 @@
+  * 3 = +radio_buf_cfg, 4 = +start, 5 = full (set_next_hop too).
+  */
+ static unsigned int nss_init_stage = 5;
++static unsigned int nss_init_flags = 0;
++module_param(nss_init_flags, uint, 0644);
++MODULE_PARM_DESC(nss_init_flags, "E97: wifili INIT flags override (0=Julius/none, 0xffffffff=keep stock 0x71)");
++static unsigned int nss_soc_mem_profile = 0;
++module_param(nss_soc_mem_profile, uint, 0644);
++MODULE_PARM_DESC(nss_soc_mem_profile, "E97: wifili INIT soc_mem_profile (0=Julius, 3=stock, 0xffffffff=keep)");
+ module_param(nss_init_stage, uint, 0644);
+ MODULE_PARM_DESC(nss_init_stage, "wifili bring-up stage limit (debug bisection)");
+ 
+@@ -3321,6 +3327,13 @@
+ 	wim->flags |= WIFILI_MULTISOC_THREAD_MAP_ENABLE;
+ 	wim->flags |= WIFILI_NSS_UNKNOWN_FLAG_20;
+ 
++	/* E97: override of the stock flag byte / mem profile from module params */
++	if (nss_init_flags != 0xffffffff)
++		wim->flags = (wim->flags & WIFILI_ADDTL_MEM_SEG_SET) | nss_init_flags;
++	if (nss_soc_mem_profile != 0xffffffff)
++		wim->soc_mem_profile = nss_soc_mem_profile;
++	pr_info("nss-init: flags=0x%x soc_mem_profile=%u\n", wim->flags, wim->soc_mem_profile);
++
+ 	/* fill hal srng message */
+ 	wim->hssm.dev_base_addr = (u32)ab->mem_pa;
+ 	wim->hssm.shadow_rdptr_mem_addr = (u32)ab->hal.rdp.paddr;

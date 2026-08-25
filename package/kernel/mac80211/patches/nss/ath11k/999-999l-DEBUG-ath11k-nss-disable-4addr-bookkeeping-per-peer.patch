@@ -1,0 +1,37 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] DEBUG: ath11k: nss: disable the 4-address bookkeeping per peer (E86)
+
+E86. The peer create message leaves the flags word at zero, so the
+wifili firmware keeps 4-address/WDS state for every peer. Measured on
+NSS.FW.12.2-156-MP.R: right after the first data frame touches a peer
+the firmware emits NSS_WIFILI_WDS_ACTIVE_INFO whose error field carries
+the poison-plus-0x800 signature (0x800, 0x4b4b0800, 0xb4b40800) and the
+node's datapath stops - one RX delivery, no TX, control still ACKing.
+The same signature was seen on an AP self peer (E63, which led to
+999-949 disarming WDS backhaul on AP vdevs) and now on a STA's AP peer,
+where nothing arms WDS from the host at all - the per-peer bookkeeping
+is on by default.
+
+The driver interface provides the opt out: set
+NSS_WIFILI_PEER_MSG_DISABLE_4ADDR in the peer create flags.
+
+Not for submission - this is a measurement.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -2751,6 +2751,15 @@
+ 	 */
+ 	peer_msg->peer_memory_size = WIFILI_NSS_PEER_BYTE_SIZE;
+ 
++	/* DEBUG E86: the message flags stay at the kzalloc zero, so the
++	 * firmware runs its 4-address/WDS bookkeeping for every peer. On this
++	 * blob that path emits NSS_WIFILI_WDS_ACTIVE_INFO with a poisoned
++	 * payload (0x...0800) right after the first data frame and the
++	 * datapath stops - measured identically on an AP self peer (E63) and
++	 * on a STA's AP peer (E80..E85). The header provides an opt out.
++	 */
++	peer_msg->flags = NSS_WIFILI_PEER_MSG_DISABLE_4ADDR;
++
+ 	msg_cb = (nss_wifili_msg_callback_t)ath11k_nss_wifili_event_receive;
+ 
+ 	nss_cmn_msg_init(&wlmsg->cm, ab->nss.if_num,

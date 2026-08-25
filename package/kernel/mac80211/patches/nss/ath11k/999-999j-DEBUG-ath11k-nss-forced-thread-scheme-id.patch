@@ -1,0 +1,46 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] DEBUG: ath11k: nss: forced wifili thread scheme id (E84)
+
+E84. With the 1/1 topology the wifili data path runs exactly one
+iteration while the control path stays alive - the signature of a radio
+worker thread that never gets scheduled. scheme_id has been 1 (LOW,
+allocated from the DT nss-radio-priority) since E77, and the old H1a
+hypothesis holds that the LOW scheme thread never runs on the single
+core MP blob. The 1/1 + scheme 0 cell of the matrix was never tested.
+
+nss_scheme=0 (default)  send scheme 0, no allocation
+nss_scheme=255          the E77 behaviour, allocate from the DT
+any other value         sent as-is
+
+Not for submission - this is a measurement.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -32,6 +32,15 @@
+ MODULE_PARM_DESC(nss_rx_rel_wbm0,
+ 		 "hand WBM2SW0 to wifili as the rx release ring (debug)");
+ 
++/* DEBUG E84: thread scheme index sent in the pdev init message.
++ * 255 = allocate from nss-radio-priority in the DT (the E77 behaviour,
++ * which yields scheme 1 = LOW on this board). Any other value is sent
++ * as-is with no allocation.
++ */
++static unsigned int nss_scheme = 0;
++module_param(nss_scheme, uint, 0644);
++MODULE_PARM_DESC(nss_scheme, "wifili pdev thread scheme id, 255 = from DT (debug)");
++
+ 
+ /* DEBUG E78: on demand dump of the DP ring state - the rings live in host
+  * DMA memory and the HP/TP registers are readable through ab->mem, so a
+@@ -3543,7 +3552,10 @@
+ 	 * database maps the low priority entry to index 1, so a board with
+ 	 * "nss-radio-priority = 0" is meant to send 1, not 0.
+ 	 */
+-	if (!of_property_read_u32(dev->of_node, "nss-radio-priority",
++	if (nss_scheme != 255) {
++		/* DEBUG E84: forced scheme index, no allocation */
++		scheme_id = nss_scheme;
++	} else if (!of_property_read_u32(dev->of_node, "nss-radio-priority",
+ 				  &nss_radio_priority)) {
+ 		scheme_id = nss_wifili_thread_scheme_alloc(ab->nss.ctx,
+ 							  ar->nss.if_num,

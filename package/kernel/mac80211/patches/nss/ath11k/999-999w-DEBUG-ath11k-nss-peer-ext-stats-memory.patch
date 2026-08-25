@@ -1,0 +1,115 @@
+DEBUG E121 - oddaj firmware'owi pamiec na statystyki rozszerzone peera.
+
+PEER_CREATE nigdy nie wypelnial pol pext_stats_mem ani pext_stats_valid
+struktury nss_wifili_peer_msg - komunikat szedl z kzalloc, wiec oba
+zostawaly zerem. Do tej pory nikt na to nie patrzyl, bo host tych
+statystyk nie czyta.
+
+Pomiar E120 pokazal jednak, ze to nie jest pole obojetne:
+ - watek NSS zamiera na 0x40004918 (`move.4 a0,(a2)`), czyli na
+   PIERWSZYM odczycie z pamieci pod adresem wzietym z argumentu;
+ - argument pochodzi z pola 60 struktury peera (0x40008208:
+   `move.4 d0,60(a6)`);
+ - zrzut pamieci peera po awarii pokazuje, ze **offset +0x3c (60) jest
+   zerem** - firmware nigdy go nie zapisal, bo host nic tam nie podal.
+Odczyt spod adresu 0 konczy sie na Ubicom32 pulapka, a blob ma dla niej
+tylko komunikat "Thread_%d has non-recoverable trap" - watek ginie na
+stale i pociaga za soba caly rdzen (reszta watkow kreci sie potem w
+petli `bset`, co widac jako martwe fw przy 1-3% CPU).
+Pasuje to do wyzwalacza: pada dopiero PIERWSZA ramka od autoryzowanego
+peera, bo dopiero wtedy firmware siega po jego statystyki.
+
+Parametr, zeby dalo sie rozdzielic dwa warianty bez przebudowy:
+  nss_pext=0  jak dotad (nic nie podawaj)
+  nss_pext=1  podaj adres, zostaw pext_stats_valid = 0  (domyslne)
+  nss_pext=2  podaj adres i ustaw pext_stats_valid = 1
+Bufor ma 4096 B, wiecej niz sama struktura, zeby nie zakladac, ze ten
+blob trzyma sie jej rozmiaru.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -75,6 +75,25 @@
+ MODULE_PARM_DESC(nss_force_authorize, "E110: authorize the peer right after peer create (open networks)");
+ 
+ /*
++ * E121: PEER_CREATE nie wypelnial nigdy pext_stats_mem ani
++ * pext_stats_valid - komunikat szedl z kzalloc, wiec oba byly zerem.
++ * Firmware MP zapisuje ten wskaznik do swojej struktury peera i siega po
++ * niego przy PIERWSZEJ ramce od tego peera; przy zerze wychodzi z tego
++ * odczyt spod adresu 0, a Ubicom32 konczy taki dostep pulapka bez
++ * handlera ("Thread has non-recoverable trap") - watek ginie na stale,
++ * a za nim caly rdzen.
++ *
++ *   0 = jak dotad (nie podawaj nic)
++ *   1 = podaj adres, zostaw pext_stats_valid = 0
++ *   2 = podaj adres i ustaw pext_stats_valid = 1
++ */
++static unsigned int nss_pext = 1;
++module_param(nss_pext, uint, 0644);
++MODULE_PARM_DESC(nss_pext, "E121: give the firmware peer extended-stats memory (0=no, 1=addr only, 2=addr+valid)");
++
++#define ATH11K_NSS_PEXT_SIZE 4096
++
++/*
+  * E108: nie wysylaj NSS_WIFILI_PEER_DELETE_MSG (typ 7).
+  *
+  * Podglad pamieci peera (E107) pokazal, ze rdzen UBI32 zyje i pracuje
+@@ -769,6 +788,13 @@
+ 		return;
+ 	}
+ 
++	if (peer->nss.pext_vaddr) {
++		dma_unmap_single(ab->dev, peer->nss.pext_paddr,
++				 ATH11K_NSS_PEXT_SIZE, DMA_BIDIRECTIONAL);
++		kfree(peer->nss.pext_vaddr);
++		peer->nss.pext_vaddr = NULL;
++	}
++
+ 	dma_unmap_single(ab->dev, peer->nss.paddr,
+ 			 WIFILI_NSS_PEER_BYTE_SIZE, DMA_TO_DEVICE);
+ 	kfree(peer->nss.vaddr);
+@@ -3114,6 +3140,32 @@
+ 	 */
+ 	peer_msg->peer_memory_size = WIFILI_NSS_PEER_BYTE_SIZE;
+ 
++	/*
++	 * E121: oddaj firmware'owi pamiec na statystyki rozszerzone peera.
++	 * Bufor jest wiekszy niz sama struktura, zeby nie liczyc na to, ze
++	 * ten blob trzyma sie jej rozmiaru.
++	 */
++	if (nss_pext) {
++		peer->nss.pext_vaddr = kzalloc(ATH11K_NSS_PEXT_SIZE, GFP_ATOMIC);
++		if (peer->nss.pext_vaddr) {
++			peer->nss.pext_paddr = dma_map_single(ab->dev,
++							      peer->nss.pext_vaddr,
++							      ATH11K_NSS_PEXT_SIZE,
++							      DMA_BIDIRECTIONAL);
++			if (dma_mapping_error(ab->dev, peer->nss.pext_paddr)) {
++				kfree(peer->nss.pext_vaddr);
++				peer->nss.pext_vaddr = NULL;
++			} else {
++				peer_msg->pext_stats_mem = peer->nss.pext_paddr;
++				peer_msg->pext_stats_valid = (nss_pext > 1);
++				pr_info("nss-pext: peer %pM mem=0x%x valid=%u\n",
++					peer->addr,
++					(unsigned int)peer->nss.pext_paddr,
++					peer_msg->pext_stats_valid);
++			}
++		}
++	}
++
+ 	/* DEBUG E86: the message flags stay at the kzalloc zero, so the
+ 	 * firmware runs its 4-address/WDS bookkeeping for every peer. On this
+ 	 * blob that path emits NSS_WIFILI_WDS_ACTIVE_INFO with a poisoned
+--- a/drivers/net/wireless/ath/ath11k/nss.h
++++ b/drivers/net/wireless/ath/ath11k/nss.h
+@@ -203,6 +203,9 @@
+ struct ath11k_nss_peer {
+ 	uint32_t *vaddr;
+ 	dma_addr_t paddr;
++	/* E121: pamiec na statystyki rozszerzone peera (pext_stats_mem) */
++	uint32_t *pext_vaddr;
++	dma_addr_t pext_paddr;
+ 	bool ext_vdev_up;
+ 	struct ieee80211_vif *ext_vif;
+ 	struct peer_stats *nss_stats;

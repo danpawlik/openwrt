@@ -1,0 +1,43 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 19:01:58.212127281 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 19:01:58.228127653 +0200
+@@ -22,6 +22,25 @@
+ static unsigned int nss_init_stage = 5;
+ 
+ /*
++ * E110: autoryzuj peera zaraz po PEER_CREATE, bez czekania na klucz.
++ *
++ * W sieci OTWARTEJ ath11k nigdy nie wola set_key, wiec nigdy nie wysyla
++ * typu 21/44 - firmware trzyma peera jako nieautoryzowanego i KASUJE jego
++ * ramki (E93: klient skojarzony, zero ramek do hosta, rdzen zyl minutami).
++ * W WPA2 autoryzacja przychodzi PRZED handshakiem (ath11k instaluje klucz
++ * grupowy na nowym peerze), po czym pierwsza odebrana ramka EAPOL jest
++ * wyrzucana wyjatkiem do hosta - i wtedy staje obsluga kolejki H2N.
++ *
++ * Ten przelacznik pozwala zbudowac trzeci przypadek: peer AUTORYZOWANY,
++ * ale bez szyfrowania - czyli normalny ruch danych bez ramek EAPOL.
++ * Jesli wtedy datapath dziala, wina lezy po stronie obslugi wyjatku
++ * EAPOL/niezaszyfrowanej ramki od peera z ustawionym typem szyfrowania.
++ */
++static unsigned int nss_force_authorize;
++module_param(nss_force_authorize, uint, 0644);
++MODULE_PARM_DESC(nss_force_authorize, "E110: authorize the peer right after peer create (open networks)");
++
++/*
+  * E108: nie wysylaj NSS_WIFILI_PEER_DELETE_MSG (typ 7).
+  *
+  * Podglad pamieci peera (E107) pokazal, ze rdzen UBI32 zyje i pracuje
+@@ -3104,6 +3123,14 @@
+ 		goto peer_mem_free;
+ 	}
+ 
++	/* E110: w sieci otwartej nikt nas nie zawola z set_key */
++	if (nss_force_authorize) {
++		int aret = ath11k_nss_set_peer_authorize(ar, peer->peer_id);
++
++		pr_info("nss-force-authorize: peer %pM id=%u ret=%d\n",
++			peer->addr, peer->peer_id, aret);
++	}
++
+ 	goto msg_free;
+ 
+ peer_mem_free:

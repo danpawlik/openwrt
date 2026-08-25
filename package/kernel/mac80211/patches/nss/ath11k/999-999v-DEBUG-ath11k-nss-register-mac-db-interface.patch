@@ -1,0 +1,61 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 20:11:53.943537011 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 20:11:53.958537344 +0200
+@@ -22,6 +22,40 @@
+ static unsigned int nss_init_stage = 5;
+ 
+ /*
++ * E113: zarejestruj interfejs bazy MAC (NSS_WIFI_MAC_DB_INTERFACE).
++ *
++ * qca-wifi (stock, dziala z tym samym blobem MP na 5018) rejestruje ten
++ * interfejs; ath11k i drzewo Juliusa NIE.  Na 807x/HK jest zbedny, ale
++ * blob MP moze kierowac przez niego sciezke wyjatku/uczenia MAC - a gdy
++ * interfejs nie ma zarejestrowanego handlera, jego watek wyjatku wisi.
++ * Rejestrujemy ze stubem (ramki zwalniamy, zdarzenia logujemy), zeby
++ * sprawdzic, czy to uzbraja sciezke wyjatku bezpiecznie.
++ */
++static unsigned int nss_reg_mac_db;
++module_param(nss_reg_mac_db, uint, 0644);
++MODULE_PARM_DESC(nss_reg_mac_db, "E113: register the NSS wifi MAC-DB interface like stock qca-wifi");
++
++static void ath11k_nss_mac_db_rx(struct net_device *netdev, struct sk_buff *skb,
++				 struct napi_struct *napi)
++{
++	static unsigned long n;
++
++	if (++n <= 20)
++		pr_info("nss-macdb-rx: n=%lu len=%u\n", n, skb ? skb->len : 0);
++	if (skb)
++		dev_kfree_skb_any(skb);
++}
++
++static void ath11k_nss_mac_db_event(void *app_data, struct nss_wifi_mac_db_msg *msg)
++{
++	static unsigned long n;
++
++	if (++n <= 20)
++		pr_info("nss-macdb-evt: n=%lu type=%u\n", n,
++			msg ? msg->cm.type : 0);
++}
++
++/*
+  * E110: autoryzuj peera zaraz po PEER_CREATE, bez czekania na klucz.
+  *
+  * W sieci OTWARTEJ ath11k nigdy nie wola set_key, wiec nigdy nie wysyla
+@@ -3745,6 +3779,17 @@
+ 	 */
+ 	ab->nss.ctx = nss_contex;
+ 
++	/* E113: interfejs bazy MAC jak w stocku qca-wifi */
++	if (nss_reg_mac_db) {
++		struct nss_ctx_instance *mdb;
++
++		mdb = nss_register_wifi_mac_db_if(NSS_WIFI_MAC_DB_INTERFACE,
++						  ath11k_nss_mac_db_rx, NULL,
++						  ath11k_nss_mac_db_event,
++						  (struct net_device *)ab, 0);
++		pr_info("nss-macdb: register %s\n", mdb ? "OK" : "FAIL");
++	}
++
+ 	msg_cb = (nss_wifili_msg_callback_t)ath11k_nss_wifili_event_receive;
+ 
+ 	/* Initialize the common part of the wlmsg */

@@ -1,0 +1,70 @@
+DEBUG ONLY - E8 bisection of the wifili bring-up sequence. Do not ship.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -15,6 +15,14 @@
+ #include "wmi.h"
+ #include "../../../../../net/mac80211/sta_info.h"
+ 
++/* DEBUG (E8 bisection): how far ath11k_nss_setup() is allowed to go.
++ * 1 = soc init only, 2 = +pdev_init without radio_buf_cfg,
++ * 3 = +radio_buf_cfg, 4 = +start, 5 = full (set_next_hop too).
++ */
++static unsigned int nss_init_stage = 5;
++module_param(nss_init_stage, uint, 0644);
++MODULE_PARM_DESC(nss_init_stage, "wifili bring-up stage limit (debug bisection)");
++
+ /*-----------------------------ATH11K-NSS Helpers--------------------------*/
+ 
+ static enum ath11k_nss_opmode
+@@ -3271,8 +3279,9 @@
+ 	 * similar to tx desc cfg at soc init per radio
+ 	 */
+ 
+-	for (i = 0; i < ATH11K_NSS_RADIO_TX_LIMIT_RANGE; i++)
+-		ath11k_nss_radio_buf_cfg(ar, i, ATH11K_NSS_RADIO_TX_LIMIT_RANGE3);
++	if (nss_init_stage >= 3)
++		for (i = 0; i < ATH11K_NSS_RADIO_TX_LIMIT_RANGE; i++)
++			ath11k_nss_radio_buf_cfg(ar, i, ATH11K_NSS_RADIO_TX_LIMIT_RANGE3);
+ 
+ 	return 0;
+ 
+@@ -3610,6 +3619,12 @@
+ 		goto fail;
+ 	}
+ 
++	if (nss_init_stage < 2) {
++		ath11k_info(ab, "nss debug: stop after soc init (stage %u)\n",
++			    nss_init_stage);
++		return 0;
++	}
++
+ 	/* Setup pdev related resources for NSS */
+ 	for (i = 0; i < ab->num_radios; i++) {
+ 		ret = ath11k_nss_pdev_init(ab, i);
+@@ -3619,6 +3634,12 @@
+ 		}
+ 	}
+ 
++	if (nss_init_stage < 4) {
++		ath11k_info(ab, "nss debug: stop before start msg (stage %u)\n",
++			    nss_init_stage);
++		return 0;
++	}
++
+ 	/* Set the NSS statemachine to start */
+ 	ret = ath11k_nss_start(ab);
+ 	if (ret) {
+@@ -3626,6 +3647,12 @@
+ 		goto pdev_deinit;
+ 	}
+ 
++	if (nss_init_stage < 5) {
++		ath11k_info(ab, "nss debug: skip set_next_hop (stage %u)\n",
++			    nss_init_stage);
++		return 0;
++	}
++
+ 	/* Default nexthop interface is set to ETH RX */
+ 	ret = nss_wifi_vdev_base_set_next_hop(ab->nss.ctx, NSS_ETH_RX_INTERFACE);
+ 	if (ret != NSS_TX_SUCCESS) {

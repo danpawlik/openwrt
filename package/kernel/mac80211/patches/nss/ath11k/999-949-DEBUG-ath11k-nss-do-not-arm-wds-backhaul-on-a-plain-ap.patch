@@ -1,0 +1,52 @@
+From: Stanislaw Pal <kuncy7@gmail.com>
+Subject: [PATCH] DEBUG: ath11k: nss: do not arm WDS backhaul on a plain AP
+
+Every AP vdev unconditionally arms WDS backhaul mode in the wifili
+firmware, regardless of whether any WDS or 4-address peer exists. The
+firmware then keeps WDS/AST state for every peer and reports it back
+through NSS_WIFILI_WDS_ACTIVE_INFO_MSG - a message this driver has no
+handler for at all.
+
+Measured on GL-B3000 (IPQ5018, firmware NSS.FW.12.2-156-MP.R): the
+firmware emits that notification 2 ms after the VAP self peer is
+created (err field 0x800) and again 244 ms after a station peer is
+created, this time carrying 0x4b4b0800 - the upper half being the
+usual poison pattern - and then stops servicing every queue, taking
+the ethernet acceleration down with it.
+
+DEBUG ONLY - the proper fix is to arm the mode only when a WDS peer
+is actually configured, and to handle the firmware's WDS events.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -1529,12 +1529,24 @@
+ 		if (ret)
+ 			goto unregister_vdev;
+ 
+-		ret = ath11k_nss_vdev_set_cmd(arvif,
+-					      ATH11K_NSS_WIFI_VDEV_CFG_WDS_BACKHAUL_CMD,
+-					      true);
+-		if (ret) {
+-			ath11k_warn(ab, "failed to cfg wds backhaul in nss %d\n", ret);
+-			goto unregister_vdev;
++		/* DEBUG E63: this used to arm WDS backhaul mode on every AP,
++		 * whether or not any WDS/4-address peer exists. The firmware
++		 * then runs its WDS/AST bookkeeping for each new peer and
++		 * notifies the host through NSS_WIFILI_WDS_ACTIVE_INFO_MSG,
++		 * which this driver does not handle at all - there is no case
++		 * for it in the event handler. Measured on IPQ5018: the
++		 * firmware sends that notification a fraction of a second
++		 * after a station peer is created, with a poisoned payload
++		 * (0x4b4b0800), and stops executing immediately afterwards.
++		 */
++		if (0) {
++			ret = ath11k_nss_vdev_set_cmd(arvif,
++						      ATH11K_NSS_WIFI_VDEV_CFG_WDS_BACKHAUL_CMD,
++						      true);
++			if (ret) {
++				ath11k_warn(ab, "failed to cfg wds backhaul in nss %d\n", ret);
++				goto unregister_vdev;
++			}
+ 		}
+ 		break;
+ 	default:

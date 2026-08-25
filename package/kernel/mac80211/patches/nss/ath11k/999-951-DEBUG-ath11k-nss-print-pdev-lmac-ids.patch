@@ -1,0 +1,25 @@
+From: Stanislaw Pal <kuncy7@gmail.com>
+Subject: [PATCH] DEBUG: ath11k: nss: print the pdev/lmac ids sent to the firmware
+
+Compare the host side pdev index this driver puts into target_pdev_id
+with the id the firmware reports through WMI.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -3329,6 +3329,16 @@
+ 	pdevmsg->radio_id = radio_id;
+ 	pdevmsg->lmac_id = ar->lmac_id;
+ 	pdevmsg->target_pdev_id = ar->pdev->pdev_id;
++
++	/* DEBUG E67: the field is named target_pdev_id but is filled from the
++	 * host side pdev index. ath11k keeps the id the firmware itself uses
++	 * in ab->target_pdev_ids[], filled from the WMI service ready event.
++	 * Print both so the two numbering schemes can be compared on IPQ5018,
++	 * where the radio lives on its own user PD.
++	 */
++	pr_info("nss-pdev: radio_id=%d lmac_id=%d host_pdev_id=%d target_pdev_ids[0]=%d target_pdev_count=%d\n",
++		radio_id, ar->lmac_id, ar->pdev->pdev_id,
++		ab->target_pdev_ids[0].pdev_id, ab->target_pdev_count);
+ 	pdevmsg->num_rx_swdesc = WIFILI_RX_DESC_POOL_WEIGHT * DP_RXDMA_BUF_RING_SIZE;
+ 	pdevmsg->scheme_id = scheme_id;
+ 

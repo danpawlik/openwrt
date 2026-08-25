@@ -1,0 +1,100 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 17:43:33.344765089 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 17:44:05.805382449 +0200
+@@ -20,6 +20,65 @@
+  * 3 = +radio_buf_cfg, 4 = +start, 5 = full (set_next_hop too).
+  */
+ static unsigned int nss_init_stage = 5;
++
++/*
++ * E105: sekcja zwlok pamieci peera.
++ *
++ * PEER_CREATE oddaje firmware'owi 1600 B pamieci HOSTA (kzalloc + dma_map)
++ * i to tam wifili trzyma swoj stan per peer - w DDR rdzenia NSS adresu MAC
++ * klienta nie ma w ogole (przeskanowane), wiec albo OCM, albo wlasnie ten
++ * bufor. Bufor jest nasz, wiec da sie go przeczytac takze wtedy, gdy rdzen
++ * juz nie odpowiada.
++ *
++ * nss_peer_keep=1  - nie zwalniaj bufora przy PEER_DELETE (przetrwa zgon)
++ * nss_peer_dump=N  - wypisz N bajtow kazdego zapamietanego bufora
++ */
++static unsigned int nss_peer_keep;
++module_param(nss_peer_keep, uint, 0644);
++MODULE_PARM_DESC(nss_peer_keep, "E105: keep the per-peer NSS buffer alive after peer delete");
++
++#define ATH11K_NSS_PEER_DBG_MAX 4
++static struct {
++	void *vaddr;
++	dma_addr_t paddr;
++	u8 mac[ETH_ALEN];
++	u16 peer_id;
++} ath11k_nss_peer_dbg[ATH11K_NSS_PEER_DBG_MAX];
++static unsigned int ath11k_nss_peer_dbg_n;
++
++static int ath11k_nss_peer_dump_set(const char *val, const struct kernel_param *kp)
++{
++	unsigned int len;
++	int ret, i;
++
++	ret = kstrtouint(val, 0, &len);
++	if (ret)
++		return ret;
++
++	if (!len)
++		len = 256;
++	if (len > WIFILI_NSS_PEER_BYTE_SIZE)
++		len = WIFILI_NSS_PEER_BYTE_SIZE;
++
++	for (i = 0; i < ATH11K_NSS_PEER_DBG_MAX; i++) {
++		if (!ath11k_nss_peer_dbg[i].vaddr)
++			continue;
++
++		pr_info("nss-peer-mem: slot=%d id=%u mac=%pM paddr=0x%llx len=%u\n",
++			i, ath11k_nss_peer_dbg[i].peer_id, ath11k_nss_peer_dbg[i].mac,
++			(unsigned long long)ath11k_nss_peer_dbg[i].paddr, len);
++		print_hex_dump(KERN_ERR, "nss-peer: ", DUMP_PREFIX_OFFSET, 32, 4,
++			       ath11k_nss_peer_dbg[i].vaddr, len, false);
++	}
++
++	return 0;
++}
++
++static const struct kernel_param_ops ath11k_nss_peer_dump_ops = {
++	.set = ath11k_nss_peer_dump_set,
++};
++module_param_cb(nss_peer_dump, &ath11k_nss_peer_dump_ops, NULL, 0644);
++MODULE_PARM_DESC(nss_peer_dump, "E105: hexdump the remembered per-peer NSS buffers");
+ static char *nss_vdev_extra_cmds;
+ module_param(nss_vdev_extra_cmds, charp, 0644);
+ MODULE_PARM_DESC(nss_vdev_extra_cmds,
+@@ -517,6 +576,14 @@
+ 	if (!peer->nss.vaddr)
+ 		return;
+ 
++	/* E105: zostaw bufor w spokoju, zeby przetrwal zgon rdzenia */
++	if (nss_peer_keep) {
++		dma_sync_single_for_cpu(ab->dev, peer->nss.paddr,
++					WIFILI_NSS_PEER_BYTE_SIZE, DMA_FROM_DEVICE);
++		peer->nss.vaddr = NULL;
++		return;
++	}
++
+ 	dma_unmap_single(ab->dev, peer->nss.paddr,
+ 			 WIFILI_NSS_PEER_BYTE_SIZE, DMA_TO_DEVICE);
+ 	kfree(peer->nss.vaddr);
+@@ -2836,6 +2903,16 @@
+ 	}
+ 
+ 	peer_msg->nss_peer_mem = peer->nss.paddr;
++
++	/* E105: zapamietaj bufor peera do pozniejszej sekcji zwlok */
++	if (ath11k_nss_peer_dbg_n < ATH11K_NSS_PEER_DBG_MAX) {
++		unsigned int i = ath11k_nss_peer_dbg_n++;
++
++		ath11k_nss_peer_dbg[i].vaddr = peer->nss.vaddr;
++		ath11k_nss_peer_dbg[i].paddr = peer->nss.paddr;
++		ath11k_nss_peer_dbg[i].peer_id = peer->peer_id;
++		ether_addr_copy(ath11k_nss_peer_dbg[i].mac, peer->addr);
++	}
+ 	peer_msg->psta_vdev_id = peer->vdev_id;
+ 
+ 	/* DEBUG E25: tell the firmware how large the peer buffer the host

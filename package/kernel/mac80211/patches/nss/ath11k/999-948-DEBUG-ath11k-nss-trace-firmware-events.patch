@@ -1,0 +1,46 @@
+From: Stanislaw Pal <kuncy7@gmail.com>
+Subject: [PATCH] DEBUG: ath11k: nss: trace the events the firmware sends us
+
+The host->firmware direction of the wifili control channel has been
+traced since E27, but nothing ever logged the opposite direction, so
+"the firmware never sends X" was never actually measured.
+
+Log every incoming event, and in particular whether the firmware asks
+the host to set up the per-TID reorder queues of a freshly created
+peer - NSS_WIFILI_TID_REOQ_SETUP_MSG, whose handler is an empty stub
+in this driver and for which no sender exists at all.
+
+DEBUG ONLY - do not submit.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -364,6 +364,16 @@
+ 	ath11k_dbg(ab, ATH11K_DBG_NSS, "nss wifili event received %d response %d error %d\n",
+ 		   msg_type, response, error);
+ 
++	/* DEBUG E62a: the host->firmware direction has been traced since
++	 * E27, the firmware->host direction never was. Log every incoming
++	 * event unconditionally, skipping only the two statistics syncs
++	 * that could flood the console.
++	 */
++	if (msg_type != NSS_WIFILI_STATS_MSG &&
++	    msg_type != NSS_WIFILI_PEER_STATS_MSG)
++		pr_info("nss-evt: type=%u resp=%u err=%u\n",
++			msg_type, response, error);
++
+ 	switch (msg_type) {
+ 	case NSS_WIFILI_INIT_MSG:
+ 	case NSS_WIFILI_PDEV_INIT_MSG:
+@@ -422,6 +432,12 @@
+ 		ath11k_nss_get_peer_stats(ab, peer_stats);
+ 		break;
+ 	case NSS_WIFILI_TID_REOQ_SETUP_MSG:
++		/* DEBUG E62a: does the firmware ask us to set up the per-TID
++		 * reorder queues? There has never been a sender for this
++		 * message on our side, and this stub swallows any request.
++		 */
++		pr_info("nss-evt: *** TID_REOQ_SETUP tid=%u peer_id=%u *** (stub, brak obslugi)\n",
++			msg->msg.reotidqmsg.tid, msg->msg.reotidqmsg.peer_id);
+ 		/* TODO setup tidq */
+ 		break;
+ 	case NSS_WIFILI_WDS_PEER_ADD_MSG:

@@ -1,0 +1,99 @@
+DEBUG E55 - uczciwy test zywotnosci firmware'u NSS (plik debugfs
+mac0/nss_ping). Zapis wysyla komunikat konfiguracji vdev, ktory
+WYMAGA potwierdzenia, i czeka na nie z limitem czasu.
+POWOD: dotychczasowy 'dowod smierci' (brak odpowiedzi na zadanie
+zrzutu) okazal sie bezwartosciowy - zmierzone na ZYWYM firmwarze
+(ethernet dzialal): 'Coredumping to DDR' i nss_coredump_complete=0.
+Ten blob nie odpowiada na zrzut NIGDY. Bez tego testu nie da sie
+odroznic zablokowanej sciezki danych od martwego rdzenia.
+Nie wysylac.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -1547,6 +1547,28 @@
+ 	arvif->nss.created = false;
+ }
+ 
++/* DEBUG E55: uczciwy test zywotnosci firmware'u. Wysyla komunikat
++ * konfiguracji vdev, ktory WYMAGA potwierdzenia, i czeka na nie.
++ * Zwraca 0 gdy firmware odpowiedzial, -ETIMEDOUT gdy milczy.
++ * Powod: zadanie zrzutu (coredump) nie dziala w tym blobie NAWET na
++ * zywym firmwarze, wiec "brak odpowiedzi" nie dowodzil niczego.
++ */
++int ath11k_nss_ping_fw(struct ath11k *ar)
++{
++	struct ath11k_vif *arvif;
++	int ret = -ENODEV;
++
++	list_for_each_entry(arvif, &ar->arvifs, list) {
++		if (!arvif->nss.created)
++			continue;
++		ret = ath11k_nss_vdev_configure(arvif);
++		break;
++	}
++	pr_info("nss-ping: vdev_configure ret=%d (0 = fw odpowiedzial, -110 = milczy)\n",
++		ret);
++	return ret;
++}
++
+ int ath11k_nss_vdev_up(struct ath11k_vif *arvif)
+ {
+ 	struct nss_wifi_vdev_msg *vdev_msg = NULL;
+--- a/drivers/net/wireless/ath/ath11k/nss.h
++++ b/drivers/net/wireless/ath/ath11k/nss.h
+@@ -250,6 +250,7 @@
+ 			    int val);
+ int ath11k_nss_vdev_create(struct ath11k_vif *arvif);
+ void ath11k_nss_vdev_delete(struct ath11k_vif *arvif);
++int ath11k_nss_ping_fw(struct ath11k *ar);
+ int ath11k_nss_vdev_up(struct ath11k_vif *arvif);
+ int ath11k_nss_vdev_down(struct ath11k_vif *arvif);
+ int ath11k_nss_peer_delete(struct ath11k *ar, u32 vdev_id, const u8 *addr);
+--- a/drivers/net/wireless/ath/ath11k/debugfs.c
++++ b/drivers/net/wireless/ath/ath11k/debugfs.c
+@@ -1819,6 +1819,29 @@
+ 	.llseek = default_llseek,
+ };
+ 
++/* DEBUG E55: zapis do tego pliku wysyla firmware'owi komunikat
++ * wymagajacy potwierdzenia i loguje, czy odpowiedzial.
++ */
++static ssize_t ath11k_write_nss_ping(struct file *file,
++				     const char __user *ubuf,
++				     size_t count, loff_t *ppos)
++{
++	struct ath11k *ar = file->private_data;
++
++	mutex_lock(&ar->conf_mutex);
++	ath11k_nss_ping_fw(ar);
++	mutex_unlock(&ar->conf_mutex);
++
++	return count;
++}
++
++static const struct file_operations fops_nss_ping = {
++	.write = ath11k_write_nss_ping,
++	.open = simple_open,
++	.owner = THIS_MODULE,
++	.llseek = default_llseek,
++};
++
+ int ath11k_debugfs_register(struct ath11k *ar)
+ {
+ 	struct ath11k_base *ab = ar->ab;
+@@ -1882,10 +1905,14 @@
+ 				    &fops_reset_ps_duration);
+ 	}
+ 
+-	if (ab->nss.enabled)
++	if (ab->nss.enabled) {
+ 		debugfs_create_file("nss_peer_stats_config", 0644,
+ 				    ar->debug.debugfs_pdev, ar,
+ 				    &fops_nss_stats);
++		debugfs_create_file("nss_ping", 0200,
++				    ar->debug.debugfs_pdev, ar,
++				    &fops_nss_ping);
++	}
+ 
+ 	return 0;
+ }

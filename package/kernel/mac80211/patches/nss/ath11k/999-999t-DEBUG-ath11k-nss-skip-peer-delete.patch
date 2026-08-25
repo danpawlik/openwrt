@@ -1,0 +1,36 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 18:22:00.663621072 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 18:22:00.678621392 +0200
+@@ -22,6 +22,21 @@
+ static unsigned int nss_init_stage = 5;
+ 
+ /*
++ * E108: nie wysylaj NSS_WIFILI_PEER_DELETE_MSG (typ 7).
++ *
++ * Podglad pamieci peera (E107) pokazal, ze rdzen UBI32 zyje i pracuje
++ * jeszcze 3.5 s po asocjacji klienta, a umiera dopiero PODCZAS obslugi
++ * PEER_DELETE: komunikat nie dostaje ACK, fw robi jeszcze kilka zapisow
++ * i milknie na zawsze (razem z ethernetem).  Ten przelacznik pomija
++ * wysylke, zeby potwierdzic wyzwalacz.
++ *
++ * 1 = pomijaj (peer zostaje w fw), 0 = normalnie
++ */
++static unsigned int nss_skip_peer_delete;
++module_param(nss_skip_peer_delete, uint, 0644);
++MODULE_PARM_DESC(nss_skip_peer_delete, "E108: do not send the wifili PEER_DELETE message");
++
++/*
+  * E105: sekcja zwlok pamieci peera.
+  *
+  * PEER_CREATE oddaje firmware'owi 1600 B pamieci HOSTA (kzalloc + dma_map)
+@@ -2894,6 +2909,11 @@
+ 	if (!ar->ab->nss.enabled)
+ 		return 0;
+ 
++	if (nss_skip_peer_delete) {
++		pr_info("nss-peer-delete: POMINIETY dla %pM (nss_skip_peer_delete)\n", addr);
++		return 0;
++	}
++
+ 	spin_lock_bh(&ar->ab->base_lock);
+ 
+ 	peer = ath11k_peer_find(ar, vdev_id, addr);

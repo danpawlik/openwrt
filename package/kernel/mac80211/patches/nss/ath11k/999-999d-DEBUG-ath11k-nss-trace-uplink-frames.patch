@@ -1,0 +1,47 @@
+DEBUG E42 - podglad ramek, ktore fw oddaje HOSTOWI w gore (uplink).
+E41: rdzen przezyl 1. asocjacje 67 s, zginal przy 2.; kadlub 20 B
+zostal odrzucony, a fw i tak padl -> kadlub to OBJAW, nie przyczyna.
+Kadlub ma src = MAC stacji, wiec powstal z ramki, ktora fw przekazal
+hostowi. Ten slad pokaze, jak wygladaja ramki od fw: pelne czy
+obciete, i czy payload zaczyna sie we wlasciwym miejscu.
+Nie wysylac.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -951,6 +951,17 @@
+ 		return;
+ 	}
+ 
++	/* DEBUG E42: sciezka wyjatkow (MCBC/WDS/4addr) - to nia ida
++	 * broadcasty stacji przy MCBC_EXC.
++	 */
++	{
++		static unsigned long sn;
++		if (++sn <= 25)
++			pr_info("wifili-rx-spec: n=%lu len=%u data=%*ph\n",
++				sn, skb->len,
++				skb->len < 40 ? skb->len : 40, skb->data);
++	}
++
+ 	ab = arvif->ar->ab;
+ 
+ 	skb->dev = dev;
+@@ -1050,6 +1061,18 @@
+ 	ath11k_dbg_dump(ab, ATH11K_DBG_DP_RX, "", "dp rx msdu from nss: ",
+ 			skb->data, skb->len);
+ 
++	/* DEBUG E42: co dokladnie fw oddaje hostowi w gore. Jesli offset
++	 * payloadu jest zly, zobaczymy to w bajtach (ramka zaczyna sie
++	 * w srodku naglowka albo jest obcieta).
++	 */
++	{
++		static unsigned long rn;
++		if (++rn <= 25)
++			pr_info("wifili-rx: n=%lu len=%u decap=%d data=%*ph\n",
++				rn, skb->len, arvif->nss.decap,
++				skb->len < 40 ? skb->len : 40, skb->data);
++	}
++
+ 	if ((arvif->vif->type == NL80211_IFTYPE_STATION && wdev->use_4addr) &&
+ 	     ath11k_nss_vdev_data_receive_mec_check(arvif->ar, skb)) {
+ 		dev_kfree_skb_any(skb);

@@ -1,0 +1,38 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 14:53:20.013854723 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 14:53:20.028854988 +0200
+@@ -20,6 +20,9 @@
+  * 3 = +radio_buf_cfg, 4 = +start, 5 = full (set_next_hop too).
+  */
+ static unsigned int nss_init_stage = 5;
++static unsigned int nss_drop_rx = 0;
++module_param(nss_drop_rx, uint, 0644);
++MODULE_PARM_DESC(nss_drop_rx, "E98: drop every frame fw delivers to host on a wifi vdev");
+ static unsigned int nss_init_flags = 0;
+ module_param(nss_init_flags, uint, 0644);
+ MODULE_PARM_DESC(nss_init_flags, "E97: wifili INIT flags override (0=Julius/none, 0xffffffff=keep stock 0x71)");
+@@ -1177,6 +1180,12 @@
+ 
+ 	skb->dev = dev;
+ 
++	if (nss_drop_rx) {
++		pr_info("wifili-rx-special: DROPPED len=%u (nss_drop_rx)\n", skb->len);
++		dev_kfree_skb_any(skb);
++		return;
++	}
++
+ 	dma_unmap_single(ab->dev, virt_to_phys(skb->head),
+ 			 NSS_WIFI_VDEV_PER_PACKET_METADATA_OFFSET +
+ 			 sizeof(struct nss_wifi_vdev_per_packet_metadata),
+@@ -1268,6 +1277,12 @@
+ 
+ 	skb->dev = dev;
+ 
++	if (nss_drop_rx) {
++		pr_info("wifili-rx: DROPPED len=%u (nss_drop_rx)\n", skb->len);
++		dev_kfree_skb_any(skb);
++		return;
++	}
++
+ 	/* log the original skb received from nss */
+ 	ath11k_dbg_dump(ab, ATH11K_DBG_DP_RX, "", "dp rx msdu from nss: ",
+ 			skb->data, skb->len);

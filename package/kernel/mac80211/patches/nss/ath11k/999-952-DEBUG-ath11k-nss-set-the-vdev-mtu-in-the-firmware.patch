@@ -1,0 +1,37 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -1307,6 +1307,25 @@
+ 	return status;
+ }
+ 
++/* DEBUG E70: the stock qca-wifi driver follows the vdev CONFIGURE message with
++ * nss_if_change_mtu() for the freshly created VAP (osif_nss_ol_vap_create in
++ * qca_ol.ko). The ath11k NSS series never sends it, so the firmware keeps
++ * whatever MTU a dynamic interface starts with. Transmit is host driven and
++ * works regardless; this tests whether the firmware refuses to hand received
++ * frames up an interface whose MTU it was never told.
++ */
++static void ath11k_nss_vdev_set_mtu(struct ath11k_vif *arvif,
++				    struct net_device *netdev)
++{
++	struct ath11k *ar = arvif->ar;
++	nss_tx_status_t status;
++
++	status = nss_if_change_mtu(ar->nss.ctx, arvif->nss.if_num, netdev->mtu);
++
++	ath11k_info(ar->ab, "nss-mtu: if_num=%d mtu=%u status=%d\n",
++		    arvif->nss.if_num, netdev->mtu, status);
++}
++
+ static int ath11k_nss_vdev_configure(struct ath11k_vif *arvif)
+ {
+ 	struct ath11k *ar = arvif->ar;
+@@ -1554,6 +1573,8 @@
+ 		goto unregister_vdev;
+ 	}
+ 
++	ath11k_nss_vdev_set_mtu(arvif, wdev->netdev);
++
+ 	arvif->nss.created = true;
+ 
+ 	ath11k_dbg(ab, ATH11K_DBG_NSS,

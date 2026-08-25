@@ -1,0 +1,29 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 14:26:54.459148171 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 14:26:54.478148682 +0200
+@@ -2715,6 +2715,8 @@
+ 	peer_msg->peer_id = peer->peer_id;
+ 	peer_msg->hw_ast_idx = peer->hw_peer_id;
+ 	peer_msg->tx_ast_hash = peer->ast_hash;
++	pr_info("nss-peer-create: mac=%pM vdev=%u peer_id=%u hw_ast_idx=%u tx_ast_hash=%u\n",
++		peer->addr, peer->vdev_id, peer->peer_id, peer->hw_peer_id, peer->ast_hash);
+ 	ether_addr_copy(peer_msg->peer_mac_addr, peer->addr);
+ 
+ 	peer->nss.vaddr = kzalloc(WIFILI_NSS_PEER_BYTE_SIZE, GFP_ATOMIC);
+--- a/drivers/net/wireless/ath/ath11k/peer.c	2026-08-23 14:26:54.460148198 +0200
++++ b/drivers/net/wireless/ath/ath11k/peer.c	2026-08-23 14:26:54.478148682 +0200
+@@ -491,6 +491,7 @@
+ 			ath11k_nss_peer_create(ar, peer);
+ 	}
+ 
++	pr_info("htt-peer-map-V1: vdev %d peer %pM id %d (ast_hash=%u hw_peer_id=%u)\n", vdev_id, mac_addr, peer_id, ast_hash, hw_peer_id);
+ 	ath11k_dbg(ab, ATH11K_DBG_DP_HTT, "peer map vdev %d peer %pM id %d\n",
+ 		   vdev_id, mac_addr, peer_id);
+ 
+@@ -542,6 +543,7 @@
+ 	if (ab->nss.enabled)
+ 		ath11k_peer_map_ast(ar, peer, mac_addr, hw_peer_id, ast_hash);
+ 
++	pr_info("htt-peer-map-V2: vdev %d peer %pM id %d is_wds %d ast_hash=%u hw_peer_id=%u\n", vdev_id, mac_addr, peer_id, is_wds, ast_hash, hw_peer_id);
+ 	ath11k_dbg(ab, ATH11K_DBG_DP_HTT, "htt peer map vdev %d peer %pM id %d is_wds %d\n",
+ 		   vdev_id, mac_addr, peer_id, is_wds);
+ 

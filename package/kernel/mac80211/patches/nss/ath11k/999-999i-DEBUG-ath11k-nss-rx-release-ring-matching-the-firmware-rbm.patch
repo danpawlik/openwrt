@@ -1,0 +1,79 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] DEBUG: ath11k: nss: rx release ring matching the firmware RBM (E83)
+
+E83. Measured on IPQ5018 with the ring probe (journal 2026-08-22): in
+NSS mode the host deliberately does not seed the RXDMA BUF ring
+
+	/* RXDMA BUF ring is offloaded to NSS */
+	if (!ab->nss.enabled)
+		ath11k_dp_rxdma_ring_buf_setup(ar, rx_ring, HAL_RXDMA_BUF);
+
+so the wifili firmware fills it with its own buffers - and it tags every
+one of them with RET_BUF_MGR = 3 = HAL_RX_BUF_RBM_SW0_BM. Hardware
+therefore returns those buffers to WBM2SW0, which this driver allocates
+as tx_ring[0].tcl_comp_ring, and the probe indeed shows RXDMA releases
+piling up there (hp 8 -> 72, tp never moves).
+
+The ring the init message declares as the firmware's rx release ring is
+dp->rx_rel_ring, i.e. WBM2SW3 (DP_RX_RELEASE_RING_NUM is a hardcoded 3),
+and that ring stays all zeroes for the whole run - nothing ever reaches
+it. So the firmware returns RX buffers to SW0 while being told its
+release ring is SW3.
+
+QSDK derives the RBM from the configured release ring id
+(dp_rx_get_rx_bm_id -> HAL_RX_BUF_RBM_SW_BM(wbm_sw0_bm_id, rx_rel_id)),
+so the measured RBM of 3 means the firmware works with release ring id 0.
+
+Point the init message at the WBM2SW0 ring so it matches. Keep it behind
+a module parameter, since the same ring is also tx_comp_ring[0] here and
+the pairing is exactly what has to be proven:
+
+	nss_rx_rel_wbm0=1  ring the firmware's RBM points at (default)
+	nss_rx_rel_wbm0=0  previous behaviour, WBM2SW3
+
+Not for submission - this is a measurement.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -23,6 +23,15 @@
+ module_param(nss_init_stage, uint, 0644);
+ MODULE_PARM_DESC(nss_init_stage, "wifili bring-up stage limit (debug bisection)");
+ 
++/* DEBUG E83: which WBM2SW ring is handed to the firmware as its RX release
++ * ring. 1 = WBM2SW0, the ring the firmware's own RET_BUF_MGR points at;
++ * 0 = dp->rx_rel_ring (WBM2SW3), what this driver has always sent.
++ */
++static unsigned int nss_rx_rel_wbm0 = 1;
++module_param(nss_rx_rel_wbm0, uint, 0644);
++MODULE_PARM_DESC(nss_rx_rel_wbm0,
++		 "hand WBM2SW0 to wifili as the rx release ring (debug)");
++
+ 
+ /* DEBUG E78: on demand dump of the DP ring state - the rings live in host
+  * DMA memory and the HP/TP registers are readable through ab->mem, so a
+@@ -3323,9 +3332,22 @@
+ 	ath11k_nss_fill_srng_info(ab, dp->reo_reinject_ring.ring_id,
+ 				  &wim->reo_reinject_ring);
+ 
+-	/* fill reo release ring info */
+-	ath11k_nss_fill_srng_info(ab, dp->rx_rel_ring.ring_id,
+-				  &wim->rx_rel_ring);
++	/* fill reo release ring info - E83: the firmware tags its own RX
++	 * buffers with RET_BUF_MGR = SW0_BM, so the hardware returns them to
++	 * WBM2SW0 (tx_ring[0].tcl_comp_ring here), not to dp->rx_rel_ring
++	 * (WBM2SW3). Hand it the ring its RBM actually points at.
++	 */
++	if (nss_rx_rel_wbm0)
++		ath11k_nss_fill_srng_info(ab,
++					  dp->tx_ring[0].tcl_comp_ring.ring_id,
++					  &wim->rx_rel_ring);
++	else
++		ath11k_nss_fill_srng_info(ab, dp->rx_rel_ring.ring_id,
++					  &wim->rx_rel_ring);
++
++	pr_info("nss-rxrel: rx_rel_ring id=%d (wbm0=%u, default rx_rel id=%d)\n",
++		wim->rx_rel_ring.ring_id, nss_rx_rel_wbm0,
++		dp->rx_rel_ring.ring_id);
+ 
+ 	/* fill reo exception ring info */
+ 	ath11k_nss_fill_srng_info(ab, dp->reo_except_ring.ring_id,

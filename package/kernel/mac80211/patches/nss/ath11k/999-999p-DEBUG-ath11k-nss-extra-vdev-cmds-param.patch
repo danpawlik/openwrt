@@ -1,0 +1,95 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 16:30:32.049149515 +0200
++++ b/drivers/net/wireless/ath/ath11k/nss.c	2026-08-23 16:30:32.064149903 +0200
+@@ -20,6 +20,10 @@
+  * 3 = +radio_buf_cfg, 4 = +start, 5 = full (set_next_hop too).
+  */
+ static unsigned int nss_init_stage = 5;
++static char *nss_vdev_extra_cmds;
++module_param(nss_vdev_extra_cmds, charp, 0644);
++MODULE_PARM_DESC(nss_vdev_extra_cmds,
++		 "E101: extra raw vdev commands sent after IF_UP, \"cmd:value,cmd:value\" (stock sends 16:1 = CFG_AST_OVERRIDE)");
+ static unsigned int nss_drop_rx = 0;
+ module_param(nss_drop_rx, uint, 0644);
+ MODULE_PARM_DESC(nss_drop_rx, "E98: drop every frame fw delivers to host on a wifi vdev");
+@@ -1842,6 +1846,71 @@
+ 	return ret;
+ }
+ 
++/*
++ * E101: wyslij SUROWA komende do VAP-a (numer komendy prosto z enum
++ * nss_wifi_vdev_cmd, bez mapowania ath11k). Sluzy do odtwarzania komend,
++ * ktorych ath11k w ogole nie zna - np. CFG_AST_OVERRIDE (16), ktore stock
++ * (osif_nss_vdev_set_cfg, galaz idx16) wysyla ze stala wartoscia 1.
++ */
++static void ath11k_nss_vdev_send_raw_cmd(struct ath11k_vif *arvif, u32 cmd, u32 val)
++{
++	struct nss_wifi_vdev_msg *vdev_msg;
++	struct nss_wifi_vdev_cmd_msg *vdev_cmd;
++	struct ath11k *ar = arvif->ar;
++	nss_tx_status_t status;
++
++	vdev_msg = kzalloc(sizeof(*vdev_msg), GFP_ATOMIC);
++	if (!vdev_msg)
++		return;
++
++	vdev_cmd = &vdev_msg->msg.vdev_cmd;
++	vdev_cmd->cmd = cmd;
++	vdev_cmd->value = val;
++
++	nss_wifi_vdev_msg_init(vdev_msg, arvif->nss.if_num,
++			       NSS_WIFI_VDEV_INTERFACE_CMD_MSG,
++			       sizeof(struct nss_wifi_vdev_cmd_msg),
++			       NULL, NULL);
++
++	status = nss_wifi_vdev_tx_msg(ar->nss.ctx, vdev_msg);
++	pr_info("nss-extra-cmd: if=%d cmd=%u value=%u status=%d\n",
++		arvif->nss.if_num, cmd, val, status);
++
++	kfree(vdev_msg);
++}
++
++/*
++ * E101: rozbierz parametr "cmd:value,cmd:value" i wyslij po IF_UP.
++ */
++static void ath11k_nss_vdev_extra_cmds(struct ath11k_vif *arvif)
++{
++	const char *p = nss_vdev_extra_cmds;
++
++	if (!p || !*p)
++		return;
++
++	while (*p) {
++		unsigned int cmd = 0, val = 0;
++		int consumed = 0;
++
++		if (sscanf(p, "%u:%u%n", &cmd, &val, &consumed) != 2) {
++			pr_info("nss-extra-cmd: nie umiem rozebrac \"%s\"\n", p);
++			return;
++		}
++
++		if (cmd >= NSS_WIFI_VDEV_MAX_CMD) {
++			pr_info("nss-extra-cmd: cmd=%u poza zakresem\n", cmd);
++			return;
++		}
++
++		ath11k_nss_vdev_send_raw_cmd(arvif, cmd, val);
++
++		p += consumed;
++		if (*p == ',')
++			p++;
++	}
++}
++
+ int ath11k_nss_vdev_up(struct ath11k_vif *arvif)
+ {
+ 	struct nss_wifi_vdev_msg *vdev_msg = NULL;
+@@ -1880,6 +1949,9 @@
+ 
+ 	ath11k_dbg(ar->ab, ATH11K_DBG_NSS, "nss vdev up tx msg success\n");
+ 
++	/* E101: komendy, ktorych ath11k nie zna, odtworzone ze stocka */
++	ath11k_nss_vdev_extra_cmds(arvif);
++
+ 	if (arvif->vif->type == NL80211_IFTYPE_AP)
+ 		list_for_each_entry_safe(ap_vlan_arvif, tmp,
+ 					 &arvif->ap_vlan_arvifs, list)
