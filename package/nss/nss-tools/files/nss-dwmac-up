@@ -1,0 +1,106 @@
+#!/bin/sh
+# Layer ECM on the armed ipq50xx data plane. The nss service armed the
+# wired plane (glue -> fw_mask -> qca-nss-drv) and loaded vlan-mgr before
+# netifd ran; this instance starts alongside netifd, waits for the VLAN
+# topology it builds on the trunk, and brings up connection acceleration.
+set -e
+. /lib/nss/functions.sh
+
+[ "$(readlink /sbin/modprobe)" = /sbin/kmodloader ] ||
+  [ -f "/lib/modules/$(uname -r)/modules.dep" ] ||
+  echo "WARN: modprobe cannot resolve module names here (the 'kmod' package replaced kmodloader and there is no modules.dep) - remove the 'kmod' package or run 'depmod -a'"
+
+GLUE_STATUS=/sys/kernel/debug/qca-dwmac-nss/status
+FWM=/sys/kernel/debug/qca-dwmac-nss/fw_mask
+
+# Arm the firmware data plane only once netifd has FINISHED with the
+# trunk. Three measured failure modes force this:
+#  - arm on a down eth0: fw starts but its GMAC never delivers ingress
+#    (E124/E125);
+#  - arm while netifd is still applying config: netifd bounces eth0
+#    moments later and the fw plane is closed/reopened mid-setup (E130);
+#  - the GMAC RX filter (promiscuous for the bridge, VLAN filter) only
+#    reaches the hardware while the host still owns it - set after the
+#    takeover it is lost, and tagged/bridged ingress dies silently.
+# So: wait for eth0 up, the lan interface up in netifd's own view, and
+# the bridge's promiscuous flag on the trunk - then give the device
+# churn a moment to drain and arm exactly once.
+eth_up() {
+  [ "$(cat /sys/class/net/eth0/operstate 2>/dev/null)" = "up" ]
+}
+poll_until 30 eth_up || echo "WARN: eth0 not up after 30s, arming anyway"
+
+lan_up() {
+  ubus call network.interface.lan status 2>/dev/null | grep -q '"up": true'
+}
+poll_until 30 lan_up || echo "WARN: netifd lan not up after 30s, arming anyway"
+
+eth_promisc() {
+  [ $(( $(cat /sys/class/net/eth0/flags 2>/dev/null || echo 0) & 0x100 )) -ne 0 ]
+}
+poll_until 15 eth_promisc || echo "WARN: eth0 not promiscuous after 15s, arming anyway"
+
+sleep 3
+
+if [ "$(cat $FWM 2>/dev/null)" = "0x0" ]; then
+  MASK="$(uci -q get nss.general.fw_mask)"
+  [ -n "$MASK" ] || MASK=0x2
+  echo "$MASK" > $FWM 2>/dev/null
+fi
+
+fw_started() { grep -q started $GLUE_STATUS 2>/dev/null; }
+poll_until 15 fw_started || {
+  echo "firmware takeover failed - staying on the host data path (same topology)"
+  exit 1
+}
+
+# Only now teach the firmware the VLANs: on load, vlan-mgr's netdevice
+# notifier replays NETDEV_REGISTER for every existing netdev, so it
+# registers netifd's eth0.<vid> in NSS using the interface number the
+# takeover just created. Loaded any earlier, that lookup fails silently,
+# the VLANs stay host-only and the firmware drops all tagged ingress
+# (measured: E126 vs the working E128 flow).
+modprobe qca-nss-vlan 2>/dev/null
+
+# Everything below is best-effort: a failure must not leave the firmware
+# armed without the rest of the plane being reported.
+set +e
+
+# Firmware log ring, readable through /sys/kernel/debug/qca-nss-drv/logs
+# and large enough that a trap burst does not overwrite itself.
+FWLOG="$(uci -q get nss.general.fw_logbuf)"
+[ -n "$FWLOG" ] || FWLOG=256
+[ "$FWLOG" -ge 32 ] 2>/dev/null && sysctl -qw dev.nss.general.logbuf="$FWLOG"
+
+# netifd builds the VLAN subinterfaces on the trunk; ECM binds to the live
+# topology, so wait for the lan bridge to exist before loading it.
+ubus -t 20 wait_for network.interface 2>/dev/null
+have_bridge() { ls -d /sys/class/net/*/bridge >/dev/null 2>&1; }
+poll_until 15 have_bridge
+
+modprobe ecm front_end_selection=1 2>/dev/null
+
+# Accelerate from the first packet of a flow instead of the default
+# sampling delay - same tuning as the ipq807x plane.
+ecm_ready() { [ -w /sys/kernel/debug/ecm/ecm_classifier_default/accel_delay_pkts ]; }
+poll_until 15 ecm_ready &&
+  echo 1 > /sys/kernel/debug/ecm/ecm_classifier_default/accel_delay_pkts ||
+  echo "WARN: ECM did not come up (no ecm_classifier_default in debugfs)"
+
+# Drop any connections tracked before ECM loaded so they re-classify
+# through the accelerated path.
+echo 1 > /sys/kernel/debug/ecm/ecm_db/defunct_all 2>/dev/null
+
+if [ -e /sys/kernel/debug/ecm/ecm_nss_ipv4 ]; then
+  echo "NSS wired plane + ECM up (Wi-Fi on the $( [ "$(cat /sys/module/ath11k/parameters/nss_offload 2>/dev/null)" = 1 ] && echo NSS || echo host ) path)"
+else
+  echo "WARN: NSS plane armed but ECM is not accelerating (no ecm_nss_ipv4 in debugfs) - check 'logread | grep -i ecm'"
+fi
+
+# One-shot state dump for the boot log - what the data plane looks like
+# right after bring-up (no periodic monitoring, by design).
+echo "nss-dwmac diag: $(cat $GLUE_STATUS 2>/dev/null | tr '\n' ' ')"
+for i in eth0 eth0.1 eth0.2; do
+  [ -d /sys/class/net/$i ] &&
+    echo "nss-dwmac diag: $i rx=$(cat /sys/class/net/$i/statistics/rx_packets)/$(cat /sys/class/net/$i/statistics/rx_bytes)B tx=$(cat /sys/class/net/$i/statistics/tx_packets)"
+done

@@ -1,0 +1,111 @@
+#!/bin/sh /etc/rc.common
+# START and USE_PROCD are read by /etc/rc.common, not by this file.
+# shellcheck disable=SC2034
+# NSS offload bring-up for ipq50xx (qca-dwmac-nss glue), split around netifd.
+#
+# The ipq50xx port model is the reverse of ipq807x: phys_if N is GMAC N and
+# the netdev is the switch trunk, so the DSA switch cannot keep its ports on
+# the data plane - the firmware cannot parse the 2-byte Atheros DSA tag, and
+# DSA user ports never get an NSS interface number, so ECM would not even
+# try to accelerate them. Port separation is done in the switch fabric
+# instead: qca8k is unbound after it has done the hard bring-up (SerDes,
+# clocks, uniphy) and the qca8337-nss module reprograms the fabric - MACs
+# on, Atheros header off, and the VTU split from nss.general.vtu (front
+# ports untagged in their VLANs, the CPU port carrying both tagged). The
+# trunk then carries plain 802.1q, which both the firmware (dynamic
+# interface type 17) and the host stack parse natively.
+#
+# The topology is therefore FIXED for both data paths: eth0 is the trunk,
+# netifd builds eth0.<vid> VLAN subinterfaces on it (lan bridge and wan),
+# and nss.general.enabled only decides what runs underneath - the NSS
+# firmware data plane with ECM acceleration, or the plain stmmac host path.
+# A failed firmware arm degrades to the host path with the same topology.
+#
+# Wi-Fi loads on the HOST path by default (nss.general.wifi_offload='0'):
+# the wifili data path of the MP firmware line dies on the first RX
+# exception from an authorized peer (measured: the core traps at
+# 0x40004918 and the whole fw->host direction stops), so Wi-Fi offload
+# stays off until that firmware bug is fixed. Wired NSS acceleration is
+# unaffected: with Wi-Fi on the host path the wifili node is never
+# registered and the firmware never touches the broken path.
+
+START=19
+USE_PROCD=1
+
+NSSOFF=/sys/module/ath11k/parameters/nss_offload
+QCA8K_DEV=90000.mdio-1:11
+FWM=/sys/kernel/debug/qca-dwmac-nss/fw_mask
+GLUE_STATUS=/sys/kernel/debug/qca-dwmac-nss/status
+
+wifi_load() {
+	local offload="$1"
+
+	modprobe ath11k 2>/dev/null
+	[ -w $NSSOFF ] && echo "$offload" > $NSSOFF
+	/etc/init.d/qca-nss-pbuf start >/dev/null 2>&1
+	modprobe ath11k_ahb 2>/dev/null
+}
+
+# qca8k did the SerDes/uniphy bring-up at boot; take the switch away from
+# it and re-arm the fabric for the VLAN trunk. Safe to call when already
+# unbound (a service restart) - the unbind write just fails quietly.
+switch_to_trunk() {
+	local vtu
+
+	vtu="$(uci -q get nss.general.vtu)"
+	[ -n "$vtu" ] || vtu="1:0t,2u,3u;2:0t,1u"
+
+	if [ -e "/sys/bus/mdio_bus/drivers/qca8k/$QCA8K_DEV" ]; then
+		echo "$QCA8K_DEV" > /sys/bus/mdio_bus/drivers/qca8k/unbind 2>/dev/null
+		sleep 2
+	fi
+	# kmodloader's modprobe drops module parameters - insmod passes them.
+	insmod "/lib/modules/$(uname -r)/qca8337-nss.ko" vlans="$vtu" 2>/dev/null ||
+		modprobe qca8337-nss 2>/dev/null
+}
+
+start_service() {
+	local mask wifi_offload
+
+	. /lib/nss/functions.sh
+
+	switch_to_trunk
+
+	wifi_offload="$(uci -q get nss.general.wifi_offload)"
+	[ "$wifi_offload" = "1" ] || wifi_offload=0
+
+	if [ "$(uci -q get nss.general.enabled)" = "0" ]; then
+		logger -t nss "NSS bring-up disabled via uci (nss.general.enabled=0), staying on the host stack"
+		wifi_load 0
+		return 0
+	fi
+
+	# Load the glue and the core driver now, arm later: qca-nss-drv's
+	# probe defers until a port is armed, so loading it here is inert.
+	# The ARMING is done by nss-dwmac-up on a LIVE trunk - arming a down
+	# eth0 at this point in boot brings the firmware up, but its GMAC
+	# then never delivers a single ingress frame (E124/E125). Do NOT
+	# load qca-nss-vlan here either: vlan-mgr resolves the trunk's NSS
+	# interface number when it sees a VLAN netdev register, and that
+	# number only exists once the takeover has run - loaded before the
+	# arm, the registration fails silently and the firmware drops all
+	# tagged ingress (E126). nss-dwmac-up loads it after the arm; the
+	# netdevice notifier replays NETDEV_REGISTER for every netdev that
+	# already exists, so netifd's eth0.<vid> are picked up regardless of
+	# who came first.
+	modprobe qca-dwmac-nss 2>/dev/null
+	modprobe qca-nss-drv 2>/dev/null
+
+	wifi_load "$wifi_offload"
+
+	procd_open_instance nss-up
+	procd_set_param command /usr/sbin/nss-dwmac-up
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+stop_service() {
+	echo "The NSS plane cannot be detached at runtime; reboot to return to the host stack."
+	echo "To keep it off across reboots: uci set nss.general.enabled='0'; uci commit nss"
+}

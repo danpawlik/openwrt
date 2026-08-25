@@ -12,7 +12,7 @@ define KernelPackage/qca-ppe-nss
   CATEGORY:=Kernel modules
   SUBMENU:=Network Devices
   TITLE:=NSS data-plane glue for the qca_edma/qca_ppe stack
-  DEPENDS:=@TARGET_qualcommax
+  DEPENDS:=@(TARGET_qualcommax_ipq807x||TARGET_qualcommax_ipq60xx)
   FILES:=$(PKG_BUILD_DIR)/qca-ppe-nss.ko
 endef
 

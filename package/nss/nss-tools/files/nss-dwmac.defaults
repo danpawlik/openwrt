@@ -1,0 +1,33 @@
+# Migrate the network config from the DSA ports to the VLAN-trunk topology
+# the ipq50xx NSS plane uses: the switch fabric splits the front ports into
+# VLANs (VTU programmed by qca8337-nss), the eth0 trunk carries them
+# tagged, and netifd builds eth0.1 (lan) / eth0.2 (wan) on top. The same
+# topology serves both data paths, so this migration is one-way and guarded
+# by a marker - rerunning the script (or a sysupgrade that keeps settings)
+# changes nothing.
+
+[ "$(uci -q get nss.general.topology)" = "vlan-trunk" ] && exit 0
+
+# Defaults for the ipq50xx plane (the config file itself ships with
+# qca-nss-drv; only fill what is not set).
+[ -n "$(uci -q get nss.general.enabled)" ] || uci set nss.general.enabled='1'
+[ -n "$(uci -q get nss.general.wifi_offload)" ] || uci set nss.general.wifi_offload='0'
+[ -n "$(uci -q get nss.general.fw_mask)" ] || uci set nss.general.fw_mask='0x2'
+[ -n "$(uci -q get nss.general.vtu)" ] || uci set nss.general.vtu='1:0t,2u,3u;2:0t,1u'
+[ -n "$(uci -q get nss.general.fw_logbuf)" ] || uci set nss.general.fw_logbuf='256'
+
+# br-lan: replace the DSA user ports with the lan VLAN on the trunk.
+lan_dev="$(uci -q get network.@device[0].name)"
+if [ "$lan_dev" = "br-lan" ]; then
+	uci -q delete network.@device[0].ports
+	uci add_list network.@device[0].ports='eth0.1'
+fi
+
+# wan/wan6: the wan VLAN on the trunk instead of the DSA wan port.
+[ -n "$(uci -q get network.wan)" ] && uci set network.wan.device='eth0.2'
+[ -n "$(uci -q get network.wan6)" ] && uci set network.wan6.device='eth0.2'
+
+uci set nss.general.topology='vlan-trunk'
+uci commit
+
+exit 0

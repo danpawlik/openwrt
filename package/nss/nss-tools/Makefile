@@ -14,7 +14,10 @@ define Package/nss-tools
   SECTION:=net
   CATEGORY:=Network
   TITLE:=NSS offload runtime tools (nss-up, nss-status)
-  DEPENDS:=@(TARGET_qualcommax) +kmod-qca-ppe-nss +kmod-qca-nss-drv \
+  DEPENDS:=@(TARGET_qualcommax_ipq807x||TARGET_qualcommax_ipq60xx) \
+	+TARGET_qualcommax_ipq807x:kmod-qca-ppe-nss \
+	+TARGET_qualcommax_ipq60xx:kmod-qca-ppe-nss \
+	+kmod-qca-nss-drv \
 	+kmod-qca-nss-ecm +kmod-qca-nss-drv-pppoe +kmod-qca-nss-drv-bridge-mgr \
 	+kmod-qca-mcs +kmod-qca-nss-drv-qdisc +kmod-qca-nss-drv-igs \
 	+sqm-scripts-nss +ethtool +ip-bridge
@@ -34,6 +37,30 @@ define Package/nss-tools/description
  holding the value we wrote. Nothing autoloads: disable
  with "uci set nss.general.enabled='0'" to stay on the plain host stack.
  Pulls in the complete NSS runtime package set.
+endef
+
+define Package/nss-tools-dwmac
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=NSS offload runtime for ipq50xx (qca-dwmac-nss glue)
+  DEPENDS:=@(TARGET_qualcommax_ipq50xx) +kmod-qca-dwmac-nss +kmod-qca-nss-drv \
+	+kmod-qca-nss-ecm +kmod-qca-nss-drv-vlan-mgr +kmod-qca8337-nss \
+	+ip-full
+  CONFLICTS:=nss-tools
+  PKGARCH:=all
+endef
+
+define Package/nss-tools-dwmac/description
+ The ipq50xx flavour of the NSS bring-up: the port model here is the
+ reverse of ipq807x (phys_if N = GMAC N, the netdev is the switch trunk),
+ so the DSA switch is rearmed as a plain VLAN fabric (qca8337-nss, VTU
+ from nss.general.vtu) and netifd runs the lan/wan VLANs on the eth0
+ trunk. The 'nss' service arms the wired firmware plane before netifd and
+ /usr/sbin/nss-dwmac-up layers ECM acceleration on top once the topology
+ exists. Wi-Fi runs on the host path by default (the MP firmware's wifili
+ data path is broken; see nss.general.wifi_offload). Disable with
+ "uci set nss.general.enabled='0'" to stay on the host stack with the
+ same topology.
 endef
 
 define Package/nssqos
@@ -105,6 +132,20 @@ define Package/nss-tools/install
 	$(INSTALL_DATA) ./files/nss-tools.keep $(1)/lib/upgrade/keep.d/nss-tools
 endef
 
+define Package/nss-tools-dwmac/install
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) ./files/nss-dwmac-up $(1)/usr/sbin/nss-dwmac-up
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/nss-dwmac.init $(1)/etc/init.d/nss
+	$(INSTALL_DIR) $(1)/lib/nss
+	$(INSTALL_DATA) ./files/functions.sh $(1)/lib/nss/functions.sh
+	$(INSTALL_DIR) $(1)/etc/sysctl.d
+	$(INSTALL_DATA) ./files/nss.sysctl $(1)/etc/sysctl.d/12-nss-networking.conf
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_DATA) ./files/nss-offload.defaults $(1)/etc/uci-defaults/98-nss-offload
+	$(INSTALL_DATA) ./files/nss-dwmac.defaults $(1)/etc/uci-defaults/99-nss-topology
+endef
+
 define Package/nssqos/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/nssqos.init $(1)/etc/init.d/nssqos
@@ -135,6 +176,7 @@ define Package/luci-app-nssqos/install
 endef
 
 $(eval $(call BuildPackage,nss-tools))
+$(eval $(call BuildPackage,nss-tools-dwmac))
 $(eval $(call BuildPackage,nssqos))
 $(eval $(call BuildPackage,luci-app-nss))
 $(eval $(call BuildPackage,luci-app-nssqos))
