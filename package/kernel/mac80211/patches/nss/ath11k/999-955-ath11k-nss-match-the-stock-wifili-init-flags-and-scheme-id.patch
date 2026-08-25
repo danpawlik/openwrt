@@ -1,0 +1,155 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] ath11k: nss: match the stock wifili init flags and scheme id
+
+E77.  After the 2026-08-22 audit the whole host->NSS control surface is
+proven equivalent to the stock qca-wifi driver - message enum and payload
+lengths, bring-up order (init -> pdev_init -> start in one straight-line
+function), every field of the pdev init message, and every field of the
+soc init message except one byte.  Two differences are left:
+
+  - the init flags byte.  The stock builder at 0xede38 writes it as
+    0x40 unconditionally, 0x1 when soc->cce_disable, 0x2 for the
+    additional memory segment, 0x8 when peer extended stats are on,
+    0x10 when a psoc cfg word is non-zero (0x10 is
+    WIFILI_MULTISOC_THREAD_MAP_ENABLE in the QSDK ath11k series) and
+    0x20 when another psoc cfg byte is non-zero.  This driver sets
+    only 0x2 and 0x40.  The two cfg predicates cannot be resolved from
+    the disassembly - cfg_psoc_get_values() returns a struct generated
+    by the CFG_ALL macro expansion - so the bits are set unconditionally
+    here, which is the widest parity we can express.
+
+  - pdev init scheme_id.  NSS_WIFILI_LOW_PRIORITY_SCHEME is 0 and the
+    driver's scheme database maps the low priority entry to index 1, so
+    a board with "nss-radio-priority = 0" should send scheme_id 1, not
+    the 0 that comes straight out of kzalloc.
+
+Deliberately several variables at once: the point is to close the
+remaining control surface, not to attribute a success.  Bisect afterwards
+if it helps.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.h
++++ b/drivers/net/wireless/ath/ath11k/nss.h
+@@ -64,6 +64,7 @@
+ /* Init Flags */
+ #define WIFILI_NSS_CCE_DISABLED 0x1
+ #define WIFILI_ADDTL_MEM_SEG_SET 0x000000002
++#define WIFILI_MULTISOC_THREAD_MAP_ENABLE 0x10
+ 
+ /* E75: QSDK keeps a separate ring topology for NSS offload
+  * (WLAN_CFG_NSS_NUM_TCL_DATA_RINGS / WLAN_CFG_NSS_NUM_REO_DEST_RING in
+@@ -81,6 +82,14 @@
+  * builder at 0xede38).
+  */
+ #define WIFILI_NSS_UNKNOWN_FLAG_40	0x000000040
++/* E77: the last bit of the same byte. Stock gates it on a psoc cfg byte
++ * that could not be named from the disassembly. (0x8 is deliberately not
++ * here: stock gates it on wlan_cfg_is_peer_ext_stats_enabled(), whose
++ * CFG_DP_PEER_EXT_STATS default is false, so stock does not set it.)
++ */
++#define WIFILI_NSS_UNKNOWN_FLAG_20	0x000000020
++/* nss_wifili_thread_scheme_alloc() returns -1 as the u8 0xff */
++#define WIFILI_SCHEME_ID_INVALID	-1
+ #define ATH11K_NSS_SOC_MEM_PROFILE	3
+ #define ATH11K_NSS_RX_BUF_LEN		1920
+ 
+@@ -249,6 +258,8 @@
+ 	/* Response to nss messages are stored here on msg callback
+ 	* used only in contention free messages during init */
+ 	int response;
++	/* set when nss_wifili_thread_scheme_alloc() handed us a scheme */
++	bool thread_scheme_allocated;
+ 	/* Below is used for identifying allocated tx descriptors */
+ 	dma_addr_t tx_desc_paddr[ATH11K_NSS_MAX_NUMBER_OF_PAGE];
+ 	uint32_t * tx_desc_vaddr[ATH11K_NSS_MAX_NUMBER_OF_PAGE];
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -2,6 +2,7 @@
+ /*
+  * Copyright (c) 2020 The Linux Foundation. All rights reserved.
+  */
++#include <linux/of.h>
+ 
+ #include "debug.h"
+ #include "mac.h"
+@@ -3112,6 +3113,14 @@
+ 	wim->soc_mem_profile = ATH11K_NSS_SOC_MEM_PROFILE;
+ 	wim->flags |= WIFILI_NSS_UNKNOWN_FLAG_40;
+ 
++	/* E77: the rest of the stock flags byte. The two cfg predicates the
++	 * stock builder gates 0x10 and 0x20 on cannot be resolved from the
++	 * disassembly, so both bits are set unconditionally here.
++	 */
++	wim->flags |= WIFILI_NSS_CCE_DISABLED;
++	wim->flags |= WIFILI_MULTISOC_THREAD_MAP_ENABLE;
++	wim->flags |= WIFILI_NSS_UNKNOWN_FLAG_20;
++
+ 	/* fill hal srng message */
+ 	wim->hssm.dev_base_addr = (u32)ab->mem_pa;
+ 	wim->hssm.shadow_rdptr_mem_addr = (u32)ab->hal.rdp.paddr;
+@@ -3287,6 +3297,7 @@
+ 	struct ath11k *ar = ab->pdevs[radio_id].ar;
+ 	struct nss_wifili_pdev_init_msg *pdevmsg;
+ 	struct nss_wifili_msg *wlmsg = NULL;
++	struct device *dev = ab->dev;
+ 	nss_wifili_msg_callback_t msg_cb;
+ 	nss_tx_status_t status;
+ 	int radio_if_num = -1;
+@@ -3294,6 +3305,8 @@
+ 	int features = 0;
+ 	int dyn_if_type;
+ 	int ret, i;
++	int scheme_id = 0;
++	u32 nss_radio_priority = 0;
+ 
+ 	dyn_if_type = ath11k_nss_get_dynamic_interface_type(ab);
+ 
+@@ -3331,6 +3344,24 @@
+ 	pdevmsg = &wlmsg->msg.pdevmsg;
+ 
+ 	pdevmsg->radio_id = radio_id;
++
++	/* E77: the stock driver allocates a thread scheme here and puts the
++	 * index in the message; this driver has always left the byte at the
++	 * kzalloc zero. NSS_WIFILI_LOW_PRIORITY_SCHEME is 0 and the scheme
++	 * database maps the low priority entry to index 1, so a board with
++	 * "nss-radio-priority = 0" is meant to send 1, not 0.
++	 */
++	if (!of_property_read_u32(dev->of_node, "nss-radio-priority",
++				  &nss_radio_priority)) {
++		scheme_id = nss_wifili_thread_scheme_alloc(ab->nss.ctx,
++							  ar->nss.if_num,
++							  nss_radio_priority);
++		if (scheme_id == (u8)WIFILI_SCHEME_ID_INVALID)
++			scheme_id = 0;
++		else
++			ab->nss.thread_scheme_allocated = true;
++	}
++	pdevmsg->scheme_id = scheme_id;
+ 	pdevmsg->lmac_id = ar->lmac_id;
+ 	pdevmsg->target_pdev_id = ar->pdev->pdev_id;
+ 
+@@ -3340,9 +3371,10 @@
+ 	 * Print both so the two numbering schemes can be compared on IPQ5018,
+ 	 * where the radio lives on its own user PD.
+ 	 */
+-	pr_info("nss-pdev: radio_id=%d lmac_id=%d host_pdev_id=%d target_pdev_ids[0]=%d target_pdev_count=%d\n",
++	pr_info("nss-pdev: radio_id=%d lmac_id=%d host_pdev_id=%d target_pdev_ids[0]=%d target_pdev_count=%d scheme_id=%d prio=%u\n",
+ 		radio_id, ar->lmac_id, ar->pdev->pdev_id,
+-		ab->target_pdev_ids[0].pdev_id, ab->target_pdev_count);
++		ab->target_pdev_ids[0].pdev_id, ab->target_pdev_count,
++		scheme_id, nss_radio_priority);
+ 	pdevmsg->num_rx_swdesc = WIFILI_RX_DESC_POOL_WEIGHT * DP_RXDMA_BUF_RING_SIZE;
+ 
+ 	/* Store rxdma ring info to the message */
+@@ -3651,6 +3683,11 @@
+ 	/* pdev deinit msg success, dealloc, deregister and return */
+ 	ret = 0;
+ 
++	if (ab->nss.thread_scheme_allocated) {
++		nss_wifili_thread_scheme_dealloc(ab->nss.ctx, ar->nss.if_num);
++		ab->nss.thread_scheme_allocated = false;
++	}
++
+ 	nss_dynamic_interface_dealloc_node(ar->nss.if_num, dyn_if_type);
+ 	nss_unregister_wifili_radio_if(ar->nss.if_num);
+ free:

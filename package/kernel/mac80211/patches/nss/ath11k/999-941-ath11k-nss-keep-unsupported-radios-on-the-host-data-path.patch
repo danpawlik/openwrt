@@ -1,0 +1,58 @@
+ath11k: nss: keep unsupported radios on the host data path
+
+ath11k_nss_setup() returns -ENOTSUPP when the radio has no wifili target
+type, and its caller treats that as a fatal pdev error:
+
+  ath11k b00a040.wifi: NSS Offload not supported for this HW
+  ath11k b00a040.wifi: failed to setup nss driver interface-524
+  ath11k b00a040.wifi: failed to create pdev core: -524
+  ath11k b00a040.wifi: failed to wait wlan mode request (mode 4): -110
+  ath11k b00a040.wifi: qmi failed to send wlan mode off: -110   (repeating)
+
+so the radio never comes up at all and its QMI teardown spins. On
+IPQ5018 this is the QCN6122 pdev: the NSS series knows the built-in
+radio (ATH11K_HW_IPQ5018_HW10) but never learned that chip, while the
+QCN6122 support came in as a separate series.
+
+nss.enabled is per ath11k_base and each multipd radio has its own, so
+the radio can simply be dropped to the host data path while the others
+keep their offload. Do that for both "no target type" and "NSS support
+disabled", the latter of which already claimed to fall back but did not.
+
+Measured on GL-B3000 (kernel 6.18.44): with this, the 2.4 GHz radio
+registers wifili and the 5 GHz radio comes up host-side.
+
+Signed-off-by: Stanislaw Pal <kuncy7@gmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -3555,13 +3555,26 @@
+ 
+ 	target_type = ath11k_nss_get_target_type(ab);
+ 
+-	if (target_type == ATH11K_WIFILI_TARGET_TYPE_UNKNOWN)
+-		return -ENOTSUPP;
++	/* A radio the wifili code has no target type for cannot be offloaded.
++	 * Returning an error here fails ath11k_core_qmi_firmware_ready() and
++	 * takes the whole pdev down ("failed to create pdev core: -524"),
++	 * leaving the radio dead and its QMI teardown spinning on -110. Drop
++	 * this radio to the host data path instead - the offload is per
++	 * ath11k_base, so the other radios keep theirs. On IPQ5018 this is
++	 * what the QCN6122 pdev needs: the NSS series knows the built-in
++	 * radio but never learned that chip.
++	 */
++	if (target_type == ATH11K_WIFILI_TARGET_TYPE_UNKNOWN) {
++		ath11k_info(ab, "NSS offload not supported for this hw, using the host data path\n");
++		ab->nss.enabled = false;
++		return 0;
++	}
+ 
+ 	/* Verify NSS support is enabled */
+ 	if (nss_cmn_get_nss_enabled() == false) {
+ 		ath11k_warn(ab, "NSS offload support disabled, falling back to default mode\n");
+-		return -ENOTSUPP;
++		ab->nss.enabled = false;
++		return 0;
+ 	}
+ 
+ 	/* Initialize completion for verifying NSS message response */

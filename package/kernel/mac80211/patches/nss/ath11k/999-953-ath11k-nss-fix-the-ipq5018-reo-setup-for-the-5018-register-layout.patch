@@ -1,0 +1,96 @@
+--- a/drivers/net/wireless/ath/ath11k/hw.c
++++ b/drivers/net/wireless/ath/ath11k/hw.c
+@@ -1041,6 +1041,25 @@
+ 			   ring_hash_map);
+ }
+ 
++/* DEBUG E72: QCA5018 REO register layout differs from IPQ8074, which this
++ * function was copied from:
++ * - bits 23-25 of GENERAL_ENABLE are SOFT_REORDER_DEST_RING here, NOT
++ *   FRAGMENT_DEST_RING (fw-api hw/qca5018/reo_reg_seq_hwioreg.h). The
++ *   fragment destination lives in MISC_CTL (+0x5d8), bits 17-19.
++ * - GENERAL_ENABLE also carries per-ring enable bits which must be
++ *   preserved.
++ * The stock qca-wifi host (hal_5018_rx.h HAL_REO_R0_CONFIG + dp_main.c) in
++ * NSS offload mode: touches only the aging bits in GENERAL_ENABLE, never
++ * writes the hash map (both radios offloaded => rx_hash_enabled=false),
++ * sets MISC_CTL.FRAGMENT_DEST_RING=ALTERNATE_SELECT and
++ * DESTINATION_RING_ALT_CTRL_IX_0.ALT_MAPPING_0=RELEASE. Replicate that.
++ */
++#define HAL_IPQ5018_REO1_MISC_CTL			0x000005d8
++#define HAL_IPQ5018_REO1_MISC_CTL_FRAG_DST_RING		GENMASK(19, 17)
++#define HAL_IPQ5018_REO1_DEST_RING_ALT_CTRL_IX_0	0x00000014
++#define HAL_IPQ5018_REO1_ALT_MAPPING_0			GENMASK(2, 0)
++#define HAL_IPQ5018_REO_REMAP_RELEASE			5
++
+ static void ath11k_hw_ipq5018_reo_setup(struct ath11k_base *ab)
+ {
+ 	u32 reo_base = HAL_SEQ_WCSS_UMAC_REO_REG;
+@@ -1058,10 +1077,12 @@
+ 
+ 	val = ath11k_hif_read32(ab, reo_base + HAL_REO1_GEN_ENABLE);
+ 
+-	val &= ~HAL_REO1_GEN_ENABLE_FRAG_DST_RING;
+-	val |= FIELD_PREP(HAL_REO1_GEN_ENABLE_FRAG_DST_RING,
+-			HAL_SRNG_RING_ID_REO2SW1) |
+-		FIELD_PREP(HAL_REO1_GEN_ENABLE_AGING_LIST_ENABLE, 1) |
++	if (!ab->nss.enabled) {
++		val &= ~HAL_REO1_GEN_ENABLE_FRAG_DST_RING;
++		val |= FIELD_PREP(HAL_REO1_GEN_ENABLE_FRAG_DST_RING,
++				HAL_SRNG_RING_ID_REO2SW1);
++	}
++	val |= FIELD_PREP(HAL_REO1_GEN_ENABLE_AGING_LIST_ENABLE, 1) |
+ 		FIELD_PREP(HAL_REO1_GEN_ENABLE_AGING_FLUSH_ENABLE, 1);
+ 	ath11k_hif_write32(ab, reo_base + HAL_REO1_GEN_ENABLE, val);
+ 
+@@ -1074,6 +1095,50 @@
+ 	ath11k_hif_write32(ab, reo_base + HAL_REO1_AGING_THRESH_IX_3(ab),
+ 			   HAL_DEFAULT_REO_TIMEOUT_USEC);
+ 
++	if (ab->nss.enabled) {
++		/* E80: the firmware is told about a single REO destination
++		 * ring (QCA5018_i.ini: dp_nss_reo_dest_rings=1), so the
++		 * hardware hash must route everything to SW1 - frames hashed
++		 * into any other ring would land where nobody reaps.
++		 */
++		ring_hash_map = HAL_HASH_ROUTING_RING_SW1 << 0 |
++			HAL_HASH_ROUTING_RING_SW1 << 4 |
++			HAL_HASH_ROUTING_RING_SW1 << 8 |
++			HAL_HASH_ROUTING_RING_SW1 << 12 |
++			HAL_HASH_ROUTING_RING_SW1 << 16 |
++			HAL_HASH_ROUTING_RING_SW1 << 20 |
++			HAL_HASH_ROUTING_RING_SW1 << 24 |
++			HAL_HASH_ROUTING_RING_SW1 << 28;
++
++		/* Fragment destination: alternate select, resolved through
++		 * ALT_CTRL_IX_0 below to "release" - fragments are dropped
++		 * in hardware, the wifili firmware does not reassemble.
++		 */
++		val = ath11k_hif_read32(ab,
++				reo_base + HAL_IPQ5018_REO1_MISC_CTL);
++		val &= ~HAL_IPQ5018_REO1_MISC_CTL_FRAG_DST_RING;
++		val |= FIELD_PREP(HAL_IPQ5018_REO1_MISC_CTL_FRAG_DST_RING,
++				  HAL_SRNG_REO_ALTERNATE_SELECT);
++		ath11k_hif_write32(ab,
++				reo_base + HAL_IPQ5018_REO1_MISC_CTL, val);
++
++		val = ath11k_hif_read32(ab,
++				reo_base + HAL_IPQ5018_REO1_DEST_RING_ALT_CTRL_IX_0);
++		val &= ~HAL_IPQ5018_REO1_ALT_MAPPING_0;
++		val |= FIELD_PREP(HAL_IPQ5018_REO1_ALT_MAPPING_0,
++				  HAL_IPQ5018_REO_REMAP_RELEASE);
++		ath11k_hif_write32(ab,
++				reo_base + HAL_IPQ5018_REO1_DEST_RING_ALT_CTRL_IX_0, val);
++
++		/* E73: stock leaves the hash map to the firmware here, but our
++		 * wifili node demonstrably does less than the stock one (it
++		 * never even emits a statistics sync), so keep programming it
++		 * from the host for now. Leaving these registers at their
++		 * power-on value would map every hash bucket to ring 0 (TCL),
++		 * i.e. push received frames into the transmit path.
++		 */
++	}
++
+ 	ath11k_hif_write32(ab, reo_base + HAL_REO1_DEST_RING_CTRL_IX_0,
+ 			   ring_hash_map);
+ 	ath11k_hif_write32(ab, reo_base + HAL_REO1_DEST_RING_CTRL_IX_1,

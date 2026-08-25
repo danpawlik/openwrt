@@ -1,0 +1,36 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] ath11k: nss: no cacheable rings when the NSS core owns them (E85)
+
+E85. With alloc_cacheable_memory (ipq8074/ipq6018/ipq5018/qcn9074) the
+REO destination and WBM2SW release rings are allocated with
+dma_alloc_noncoherent and managed with host side cache maintenance in
+the hal srng accessors. In NSS offload mode the consumer of exactly
+these rings is the UBI32 core, which takes no part in the host CPU
+cache protocol, and the host never runs the accessors for them - but
+still holds the ring through a cacheable mapping, so any dirty line
+writeback clobbers descriptors under the firmware. The srng flags word
+sent to the firmware in the wifili init message also carries the purely
+host-local HAL_SRNG_FLAGS_CACHED bit (0x20000000) for these rings.
+
+Stock QSDK 12.2 avoids both explicitly ("Disable cached desc if NSS
+offload is enabled" in dp_main.c, and the TCL twin in
+dp_alloc_tx_ring_pair_by_index). Mirror it: skip the cacheable
+allocation when nss is enabled.
+
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -256,7 +256,13 @@
+ 
+ 	ring->size = (num_entries * entry_sz) + HAL_RING_BASE_ALIGN - 1;
+ 
+-	if (ab->hw_params.alloc_cacheable_memory) {
++	/* E85: never from cacheable memory when the ring consumer is the NSS
++	 * core - it takes no part in the host CPU cache protocol, and stock
++	 * QSDK does the same ("Disable cached desc if NSS offload is enabled"
++	 * in dp_main.c). This also keeps HAL_SRNG_FLAGS_CACHED out of the
++	 * flags word the wifili init message hands to the firmware.
++	 */
++	if (ab->hw_params.alloc_cacheable_memory && !ab->nss.enabled) {
+ 		/* Allocate the reo dst and tx completion rings from cacheable memory */
+ 		switch (type) {
+ 		case HAL_REO_DST:

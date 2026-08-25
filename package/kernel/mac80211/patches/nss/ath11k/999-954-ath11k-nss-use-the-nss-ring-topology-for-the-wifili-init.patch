@@ -1,0 +1,73 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.h
++++ b/drivers/net/wireless/ath/ath11k/nss.h
+@@ -65,6 +65,28 @@
+ #define WIFILI_NSS_CCE_DISABLED 0x1
+ #define WIFILI_ADDTL_MEM_SEG_SET 0x000000002
+ 
++/* E80: the NSS offload ring topology for this SoC. The generic QSDK
++ * defaults are 2/2 (WLAN_CFG_NSS_NUM_* in wlan_cfg/cfg_dp.h) and host
++ * mode uses 3/4, but the stock GL-B3000 rootfs overrides both per SoC:
++ * ini/internal/QCA5018_i.ini has dp_nss_tcl_data_rings=1 and
++ * dp_nss_reo_dest_rings=1. IPQ5018 hw_params in mainline agree the SoC
++ * has a single usable TCL ring (max_tx_ring = 1). Describing rings the
++ * SoC does not have made the wifili firmware configure nonexistent
++ * hardware at START.
++ */
++#define ATH11K_NSS_NUM_TCL_DATA_RINGS 1
++#define ATH11K_NSS_NUM_REO_DEST_RINGS 1
++
++/* E76: fields of the wifili init message that exist only as a contract with
++ * the firmware blob - they have no definition in any qca-nss-drv header, in
++ * 14.0 or anywhere else, which is why the NSS series for ath11k never filled
++ * them. Values read out of the stock qca-wifi driver (wifi_3_0.ko, init
++ * builder at 0xede38).
++ */
++#define WIFILI_NSS_UNKNOWN_FLAG_40	0x000000040
++#define ATH11K_NSS_SOC_MEM_PROFILE	3
++#define ATH11K_NSS_RX_BUF_LEN		1920
++
+ /* ATH11K NSS PEER Info */
+ /* Host memory allocated for peer info storage in nss */
+ #define WIFILI_NSS_PEER_BYTE_SIZE NSS_WIFILI_PEER_SIZE
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -3101,7 +3101,16 @@
+ 
+ 	/* fill rx parameters to initialize rx context */
+ 	wim->wrip.tlv_size = ab->hw_params.hal_desc_sz;
+-	wim->wrip.rx_buf_len = DP_RXDMA_NSS_REFILL_RING_SIZE;
++	wim->wrip.rx_buf_len = ATH11K_NSS_RX_BUF_LEN;
++
++	/* E76: stock parity for the three fields the blob reads but no header
++	 * describes. The stock driver sets flag 0x40 unconditionally; 0x10 and
++	 * 0x20 are gated on psoc config values that could not be resolved from
++	 * the disassembly, so they are left out. tx_sw_internode_queue_size is
++	 * already set to 1024 elsewhere, which matches the stock default.
++	 */
++	wim->soc_mem_profile = ATH11K_NSS_SOC_MEM_PROFILE;
++	wim->flags |= WIFILI_NSS_UNKNOWN_FLAG_40;
+ 
+ 	/* fill hal srng message */
+ 	wim->hssm.dev_base_addr = (u32)ab->mem_pa;
+@@ -3110,8 +3119,8 @@
+ 	wim->hssm.lmac_rings_start_id = HAL_SRNG_RING_ID_LMAC1_ID_START;
+ 
+ 	/* fill TCL data/completion ring info */
+-	wim->num_tcl_data_rings = DP_TCL_NUM_RING_MAX;
+-	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++) {
++	wim->num_tcl_data_rings = ATH11K_NSS_NUM_TCL_DATA_RINGS;
++	for (i = 0; i < wim->num_tcl_data_rings; i++) {
+ 		ath11k_nss_fill_srng_info(ab, dp->tx_ring[i].tcl_data_ring.ring_id,
+ 					  &wim->tcl_ring_info[i]);
+ 		ath11k_nss_fill_srng_info(ab, dp->tx_ring[i].tcl_comp_ring.ring_id,
+@@ -3124,8 +3133,8 @@
+ 		goto free;
+ 
+ 	/* fill reo dest ring info */
+-	wim->num_reo_dest_rings = DP_REO_DST_RING_MAX;
+-	for (i = 0; i < DP_REO_DST_RING_MAX; i++) {
++	wim->num_reo_dest_rings = ATH11K_NSS_NUM_REO_DEST_RINGS;
++	for (i = 0; i < wim->num_reo_dest_rings; i++) {
+ 		ath11k_nss_fill_srng_info(ab, dp->reo_dst_ring[i].ring_id,
+ 					  &wim->reo_dest_ring[i]);
+ 	}

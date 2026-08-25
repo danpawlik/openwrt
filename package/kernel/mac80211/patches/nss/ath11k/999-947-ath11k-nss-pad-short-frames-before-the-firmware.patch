@@ -1,0 +1,44 @@
+From: Stanislaw Pal <kuncy7@gmail.com>
+Subject: [PATCH] ath11k: nss: pad short frames before handing them to the firmware
+
+When a station associates, mac80211 sends an 802.2 Layer 2 Update
+frame so that bridges relearn the station's port
+(ieee80211_send_layer2_update): a broadcast destination, the station
+as source, an 802.3 length field of six and a six byte LLC XID - 20
+bytes in total, with skb->protocol set to ETH_P_802_2.
+
+With wifili offload this is the first data frame the firmware is
+handed for a new station, and it is 40 bytes below the minimum
+Ethernet frame. The QSDK stack these firmware images are validated
+against runs qca-wifi rather than mac80211 and has no equivalent
+frame, so the path is untested there.
+
+Pad short frames to ETH_ZLEN before handing them over, which is what
+the hardware transmit path does for the same frame in host mode.
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -1167,8 +1167,22 @@
+ 		goto drop;
+ 	}
+ 
+-	if (encap_type == HAL_TCL_ENCAP_TYPE_ETHERNET)
++	if (encap_type == HAL_TCL_ENCAP_TYPE_ETHERNET) {
++		/* mac80211 emits a 20 byte 802.2 Layer 2 Update frame every
++		 * time a station associates (ieee80211_send_layer2_update):
++		 * broadcast DA, the station as SA, an 802.3 length field and
++		 * a six byte LLC XID. It is well below the 60 byte Ethernet
++		 * minimum, and it is the first data frame the firmware sees
++		 * for a new station. The QSDK stack this firmware ships with
++		 * has no equivalent, so pad the frame to a valid length
++		 * before handing it over.
++		 */
++		if (skb->len < ETH_ZLEN && skb_put_padto(skb, ETH_ZLEN)) {
++			atomic_inc(&soc_stats->tx_err.misc_fail);
++			return NSS_TX_FAILURE;
++		}
+ 		goto send;
++	}
+ 
+ 	if (encap_type == HAL_TCL_ENCAP_TYPE_RAW)
+ 		ath11k_nss_tx_encap_raw(skb);
