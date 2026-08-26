@@ -33,7 +33,6 @@ START=19
 USE_PROCD=1
 
 NSSOFF=/sys/module/ath11k/parameters/nss_offload
-QCA8K_DEV=90000.mdio-1:11
 FWM=/sys/kernel/debug/qca-dwmac-nss/fw_mask
 GLUE_STATUS=/sys/kernel/debug/qca-dwmac-nss/status
 
@@ -49,18 +48,31 @@ wifi_load() {
 # qca8k did the SerDes/uniphy bring-up at boot; take the switch away from
 # it and re-arm the fabric for the VLAN trunk. Safe to call when already
 # unbound (a service restart) - the unbind write just fails quietly.
+#
+# Board wiring comes from uci (all optional; defaults = GL-B3000):
+#   nss.general.switch_dev   the switch's mdio device, to unbind from qca8k
+#                            (default 90000.mdio-1:11 - QCA8337 at address 17
+#                            on mdio1, the usual placement)
+#   nss.general.vtu          VTU program (module parameter 'vlans')
+#   nss.general.switch_args  any further qca8337-nss parameters, verbatim,
+#                            e.g. 'cpu_port=6 ports=0x7c wake_phys=...'
+#                            for a board with the CPU port on port 6
 switch_to_trunk() {
-	local vtu
+	local dev vtu args
 
+	dev="$(uci -q get nss.general.switch_dev)"
+	[ -n "$dev" ] || dev="90000.mdio-1:11"
 	vtu="$(uci -q get nss.general.vtu)"
 	[ -n "$vtu" ] || vtu="1:0t,2u,3u;2:0t,1u"
+	args="$(uci -q get nss.general.switch_args)"
 
-	if [ -e "/sys/bus/mdio_bus/drivers/qca8k/$QCA8K_DEV" ]; then
-		echo "$QCA8K_DEV" > /sys/bus/mdio_bus/drivers/qca8k/unbind 2>/dev/null
+	if [ -e "/sys/bus/mdio_bus/drivers/qca8k/$dev" ]; then
+		echo "$dev" > /sys/bus/mdio_bus/drivers/qca8k/unbind 2>/dev/null
 		sleep 2
 	fi
 	# kmodloader's modprobe drops module parameters - insmod passes them.
-	insmod "/lib/modules/$(uname -r)/qca8337-nss.ko" vlans="$vtu" 2>/dev/null ||
+	# shellcheck disable=SC2086
+	insmod "/lib/modules/$(uname -r)/qca8337-nss.ko" vlans="$vtu" $args 2>/dev/null ||
 		modprobe qca8337-nss 2>/dev/null
 }
 

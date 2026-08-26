@@ -159,6 +159,8 @@ migrates an existing DSA-style network config once (`br-lan` ports →
 | `wifi_offload` | `0` | `1` = load ath11k with `nss_offload=1`. **Investigation only** - see *Wi-Fi*. |
 | `fw_mask` | `0x2` | bitmask of GMACs to hand to the firmware; bit N = GMAC N. Only GMAC1 is validated. |
 | `vtu` | `1:0t,2u,3u;2:0t,1u` | VTU program for `qca8337-nss` (B3000 wiring - see *Porting*) |
+| `switch_dev` | `90000.mdio-1:11` | the switch's MDIO device, unbound from `qca8k` before the re-arm |
+| `switch_args` | *(empty)* | further `qca8337-nss` parameters, passed verbatim (`cpu_port=`, `ports=`, `wake_phys=`, `bus_via=`) |
 | `fw_logbuf` | `256` | firmware log ring size, read at `/sys/kernel/debug/qca-nss-drv/logs` |
 
 There is no runtime detach. `/etc/init.d/nss stop` prints how to disable the
@@ -204,6 +206,8 @@ it reaches the switch through *named* MDIO devices given as parameters.
 | `bus_via` | `90000.mdio-1:01` | any MDIO device on the switch's bus, used to find the bus |
 | `wake_phys` | `90000.mdio-1:00,…:01,…:02` | front-panel PHYs to power back up (qca8k's teardown leaves them in BMCR power-down) |
 | `vlans` | *(empty = off)* | VTU program, `<vid>:<port><t|u>[,…][;…]`; a port listed `u` also gets the vid as PVID |
+| `cpu_port` | `0` | the switch port wired to the SoC GMAC (forced 1G full duplex) |
+| `ports` | `0x0f` | bitmask of switch ports to enable, CPU port included |
 | `switch_fixup` | `1` | the MAC/header/flooding re-arm; `0` = only wake the PHYs |
 
 Load it with `insmod`, not `modprobe`: kmodloader's `modprobe` drops module
@@ -222,19 +226,23 @@ The board side is small. The parts, in order of effort:
    GMAC0 (the internal GE PHY) has not been tried.
 3. **The switch.** Find your MDIO device names with
    `ls /sys/bus/mdio_bus/devices/` and set `bus_via` / `wake_phys` from them;
-   write your own `vlans` map from the port wiring in your DTS. The service
-   hard-codes the switch device name (`QCA8K_DEV=90000.mdio-1:11` - the
-   QCA8337 at address 17 on mdio1, the usual placement) and takes the VTU map
-   from `nss.general.vtu`.
+   read the port wiring off the `ethernet-switch` node in your DTS and write
+   `cpu_port`, `ports` and the `vlans` map from it. All of it goes into uci -
+   `nss.general.vtu` for the VTU map, `nss.general.switch_args` for the rest,
+   `nss.general.switch_dev` if the switch is not at `90000.mdio-1:11`.
 
-**One limitation to know before you start.** `switch_fixup` is currently
-hard-wired to the B3000 wiring: CPU port = **port 0**, front ports **1-3**
-(`for (p = 0; p <= 3; p++)`, flood masks `0xf`). That happens to match boards
-like the XUNISON Exigo D50 (confirmed working with the module's defaults, on
-qosmio's tree) but **not** the Linksys MX2000 / MR5500, whose CPU port is
-**port 6** with the front ports on 1-5. Generalising it - a `cpu_port`
-parameter and a port mask - is a small change and the next thing on the list;
-until it lands, those boards need the loop bound and the masks changed.
+   Two worked examples straight from the DTS files in this tree (untested on
+   the boards themselves - the defaults are the only wiring validated here):
+
+   | Board | CPU port | wan | lan | `switch_args` | `vtu` |
+   |---|:---:|---|---|---|---|
+   | GL-B3000 (default) | 0 | port 1 / PHY 0 | ports 2-3 / PHY 1-2 | *(none)* | `1:0t,2u,3u;2:0t,1u` |
+   | Linksys MX2000 | 6 | port 2 / PHY 1 | ports 3-5 / PHY 2-4 | `cpu_port=6 ports=0x7c wake_phys=90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04` | `1:6t,3u,4u,5u;2:6t,2u` |
+   | Linksys MR5500 | 6 | port 5 / PHY 4 | ports 1-4 / PHY 0-3 | `cpu_port=6 ports=0x7e wake_phys=90000.mdio-1:00,90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04` | `1:6t,1u,2u,3u,4u;2:6t,5u` |
+
+   A board whose CPU port is not 0 was the one thing the fabric re-arm could
+   not do until the `cpu_port` / `ports` parameters; with them the module
+   carries no board assumption of its own any more.
 
 Also: a board whose WAN is on the internal GE PHY (GMAC0), like the D50, needs
 no VTU at all - the switch only carries LANs, `vlans` can stay empty - but then

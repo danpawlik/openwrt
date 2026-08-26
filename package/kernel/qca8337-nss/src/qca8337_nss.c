@@ -13,8 +13,10 @@
  *                  power them back up with autoneg.
  *   switch_fixup:  ports were disabled and the Atheros header left on;
  *                  re-enable MACs, turn the header off everywhere, set
- *                  ports 0-3 to FORWARD with full member masks and
- *                  restore unknown-unicast/multicast/broadcast flooding.
+ *                  every port in `ports` to FORWARD with full member
+ *                  masks and restore unknown-unicast/multicast/broadcast
+ *                  flooding among them. `cpu_port` is the one forced to
+ *                  1G full duplex (the SGMII/RGMII link to the GMAC).
  *
  * Both were measured out on GL-B3000 during the 6.12 bring-up (road 1)
  * and carried over unchanged; the paged-MDIO protocol is copied from
@@ -64,6 +66,21 @@ MODULE_PARM_DESC(wake_phys, "Comma list of mdio device names to power up (BMCR)"
 static char *bus_via = "90000.mdio-1:01";
 module_param(bus_via, charp, 0444);
 MODULE_PARM_DESC(bus_via, "Any mdio device on the switch bus, used to reach it");
+
+/*
+ * Which switch ports exist on this board and which of them is the CPU
+ * port. The QCA8337 has seven (0-6); the CPU link to the SoC's GMAC is
+ * on port 0 on some boards (GL-B3000, Exigo D50) and on port 6 on others
+ * (Linksys MX2000, MR5500). Defaults are the B3000 wiring: CPU on 0,
+ * front ports 1-3.
+ */
+static unsigned int cpu_port;
+module_param(cpu_port, uint, 0444);
+MODULE_PARM_DESC(cpu_port, "Switch port wired to the SoC GMAC, forced 1G FD (default 0)");
+
+static unsigned int ports = 0x0f;
+module_param(ports, uint, 0444);
+MODULE_PARM_DESC(ports, "Bitmask of switch ports to enable, CPU port included (default 0x0f = ports 0-3)");
 
 #define G8_PORT_STATUS(i)	(0x07c + (i) * 4)
 #define G8_PORT_HDR_CTRL(i)	(0x9c + (i) * 4)
@@ -144,25 +161,42 @@ static void fixup_switch(void)
 
 	pr_info("qca8337-nss: chip id reg0=0x%08x\n", g8_read(bus, 0));
 
-	for (p = 0; p <= 3; p++) {
+	ports &= GENMASK(G8_NPORTS - 1, 0);
+	if (cpu_port >= G8_NPORTS) {
+		pr_err("qca8337-nss: cpu_port %u out of range (0-%d)\n",
+		       cpu_port, G8_NPORTS - 1);
+		put_device(d);
+		return;
+	}
+	if (!(ports & BIT(cpu_port))) {
+		pr_warn("qca8337-nss: ports=0x%02x lacks cpu_port %u, adding it\n",
+			ports, cpu_port);
+		ports |= BIT(cpu_port);
+	}
+	pr_info("qca8337-nss: cpu_port=%u ports=0x%02x\n", cpu_port, ports);
+
+	for (p = 0; p < G8_NPORTS; p++) {
 		u32 lkp;
+
+		if (!(ports & BIT(p)))
+			continue;
 
 		/* no Atheros header anywhere */
 		g8_write(bus, G8_PORT_HDR_CTRL(p), 0);
 
 		/* MACs on: CPU port forced 1G FD, jacks autoneg */
-		if (p == 0)
+		if (p == cpu_port)
 			g8_write(bus, G8_PORT_STATUS(p),
 				 0x2 /*1000*/ | BIT(2) | BIT(3) | BIT(6));
 		else
 			g8_write(bus, G8_PORT_STATUS(p),
 				 BIT(2) | BIT(3) | BIT(9));
 
-		/* lookup: member = all other ports 0-3, state FORWARD(4) */
+		/* lookup: member = all other enabled ports, state FORWARD(4) */
 		lkp = g8_read(bus, G8_PORT_LOOKUP(p));
 		lkp &= ~GENMASK(6, 0);
 		lkp &= ~GENMASK(18, 16);
-		lkp |= (0xf & ~BIT(p));
+		lkp |= (ports & ~BIT(p));
 		lkp |= FIELD_PREP(GENMASK(18, 16), 0x4);
 		g8_write(bus, G8_PORT_LOOKUP(p), lkp);
 		pr_info("qca8337-nss: port%d status=0x%08x lookup=0x%08x hdr=0x%08x\n",
@@ -171,12 +205,12 @@ static void fixup_switch(void)
 			g8_read(bus, G8_PORT_HDR_CTRL(p)));
 	}
 
-	/* flood unknown UC/MC/BC/IGMP to all ports 0-3 */
+	/* flood unknown UC/MC/BC/IGMP to all enabled ports */
 	g8_write(bus, G8_GLOBAL_FW_CTRL1,
-		 FIELD_PREP(GENMASK(30, 24), 0xf) |
-		 FIELD_PREP(GENMASK(22, 16), 0xf) |
-		 FIELD_PREP(GENMASK(14, 8), 0xf) |
-		 FIELD_PREP(GENMASK(6, 0), 0xf));
+		 FIELD_PREP(GENMASK(30, 24), ports) |
+		 FIELD_PREP(GENMASK(22, 16), ports) |
+		 FIELD_PREP(GENMASK(14, 8), ports) |
+		 FIELD_PREP(GENMASK(6, 0), ports));
 	pr_info("qca8337-nss: fw_ctrl1=0x%08x\n",
 		g8_read(bus, G8_GLOBAL_FW_CTRL1));
 
