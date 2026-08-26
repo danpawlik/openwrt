@@ -17,6 +17,18 @@ Validated on the **Xiaomi AX3600** (IPQ8071A, 512 MB, PPPoE uplink):
 | NAT + PPPoE routing @ ~310 Mbit/s | ~42 % of one core (softirq) | **99.7 % CPU idle** |
 | SQM shaping @ 285 Mbit | CPU-bound on this class of SoC | **99 % idle, 16 ms RTT under full load — no bufferbloat** |
 
+## This branch: `ipq50xx-nss`
+
+You are on the **IPQ50xx branch**. It layers the IPQ5018 port on top of the
+IPQ807x tree described below: NSS offload on kernel 6.18 with the upstream
+`stmmac` driver, validated on the GL.iNet GL-B3000. Everything specific to it -
+what the ten commits are, how to build, how the plane comes up, why DSA has to
+go, how to port another IPQ5018 board - is in
+**[README.ipq50xx.md](README.ipq50xx.md)**. The companion feed is
+[kuncy7/nss-packages](https://github.com/kuncy7/nss-packages/tree/ipq50xx-nss),
+branch `ipq50xx-nss`. The rest of this file is the IPQ807x project's README,
+unchanged.
+
 ## How traffic flows: host path vs NSS offload
 
 After a plain reboot the router is **stock OpenWrt** — the CPU forwards every
