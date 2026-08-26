@@ -48,11 +48,36 @@ if [ "$(cat $FWM 2>/dev/null)" = "0x0" ]; then
   echo "$MASK" > $FWM 2>/dev/null
 fi
 
+# Wi-Fi offload is loaded from here, not from the service, because ath11k
+# checks the NSS core state when it registers wifili (see the note in the
+# init script). WIFI_DEFERRED is set when the service left it to us.
+WIFI_OFFLOAD="$(uci -q get nss.general.wifi_offload)"
+[ "$WIFI_OFFLOAD" = "1" ] || WIFI_OFFLOAD=0
+
+wifi_load_now() {
+  local offload="$1"
+
+  [ "$WIFI_OFFLOAD" = "1" ] || return 0        # the service already loaded it
+  grep -q '^ath11k_ahb ' /proc/modules && return 0  # someone got there first
+  # NB: the guard is on ath11k_ahb, not ath11k - kmodloader loads the core
+  # module at boot; it is the _ahb probe that binds the radios.
+  modprobe ath11k 2>/dev/null
+  [ -w /sys/module/ath11k/parameters/nss_offload ] &&
+    echo "$offload" > /sys/module/ath11k/parameters/nss_offload
+  /etc/init.d/qca-nss-pbuf start >/dev/null 2>&1
+  modprobe ath11k_ahb 2>/dev/null
+  echo "ath11k loaded on the $( [ "$offload" = 1 ] && echo NSS || echo host ) path"
+}
+
 fw_started() { grep -q started $GLUE_STATUS 2>/dev/null; }
 poll_until 15 fw_started || {
   echo "firmware takeover failed - staying on the host data path (same topology)"
+  wifi_load_now 0
   exit 1
 }
+
+# The core is up: now ath11k can register wifili and get INITIALIZED.
+wifi_load_now 1
 
 # Only now teach the firmware the VLANs: on load, vlan-mgr's netdevice
 # notifier replays NETDEV_REGISTER for every existing netdev, so it

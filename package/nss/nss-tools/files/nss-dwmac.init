@@ -108,7 +108,25 @@ start_service() {
 	modprobe qca-dwmac-nss 2>/dev/null
 	modprobe qca-nss-drv 2>/dev/null
 
-	wifi_load "$wifi_offload"
+	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.
+	# ath11k registers the wifili interface at module load and checks the
+	# NSS core state right there: nss_cmn_get_state() != INITIALIZED makes
+	# ath11k_nss_setup() fail with -EINVAL ("nss state in default init
+	# state"), the radio falls back to the host path for the rest of the
+	# boot, and nothing retries. The core is only booted by the arm in
+	# nss-dwmac-up, which runs after netifd - about 14 s later - so loading
+	# ath11k here with nss_offload=1 loses that race every time. It is the
+	# same class of failure as the other three orderings above, with the
+	# same silent symptom: everything looks up, the diag line even says
+	# "Wi-Fi on the NSS path", and the offload is simply not there.
+	# On multipd IPQ5018 a later reload is not an option - rmmod ath11k_ahb
+	# does not clean up the Q6 and the radios never come back - so this is
+	# load-once-in-the-right-place, not load-and-retry.
+	if [ "$wifi_offload" = "1" ]; then
+		logger -t nss "Wi-Fi offload requested: deferring ath11k to nss-dwmac-up (after the arm)"
+	else
+		wifi_load 0
+	fi
 
 	procd_open_instance nss-up
 	procd_set_param command /usr/sbin/nss-dwmac-up
