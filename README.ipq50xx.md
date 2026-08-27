@@ -206,7 +206,7 @@ it reaches the switch through *named* MDIO devices given as parameters.
 | `bus_via` | `90000.mdio-1:01` | any MDIO device on the switch's bus, used to find the bus |
 | `wake_phys` | `90000.mdio-1:00,…:01,…:02` | front-panel PHYs to power back up (qca8k's teardown leaves them in BMCR power-down) |
 | `vlans` | *(empty = off)* | VTU program, `<vid>:<port><t|u>[,…][;…]`; a port listed `u` also gets the vid as PVID |
-| `cpu_port` | `0` | the switch port wired to the SoC GMAC (forced 1G full duplex) |
+| `cpu_port` | `0` | the switch port wired to the SoC GMAC (forced 1G full duplex); `255` = none, for boards whose SoC link enters the switch through one of its PHYs and autonegotiates (AX6000, SPNMX56) |
 | `ports` | `0x0f` | bitmask of switch ports to enable, CPU port included |
 | `switch_fixup` | `1` | the MAC/header/flooding re-arm; `0` = only wake the PHYs |
 

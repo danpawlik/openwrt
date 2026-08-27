@@ -76,7 +76,7 @@ MODULE_PARM_DESC(bus_via, "Any mdio device on the switch bus, used to reach it")
  */
 static unsigned int cpu_port;
 module_param(cpu_port, uint, 0444);
-MODULE_PARM_DESC(cpu_port, "Switch port wired to the SoC GMAC, forced 1G FD (default 0)");
+MODULE_PARM_DESC(cpu_port, "Switch port wired to the SoC GMAC, forced 1G FD (default 0; 255 = none, for a CPU link that goes through a PHY and autonegotiates)");
 
 static unsigned int ports = 0x0f;
 module_param(ports, uint, 0444);
@@ -162,18 +162,24 @@ static void fixup_switch(void)
 	pr_info("qca8337-nss: chip id reg0=0x%08x\n", g8_read(bus, 0));
 
 	ports &= GENMASK(G8_NPORTS - 1, 0);
-	if (cpu_port >= G8_NPORTS) {
-		pr_err("qca8337-nss: cpu_port %u out of range (0-%d)\n",
-		       cpu_port, G8_NPORTS - 1);
-		put_device(d);
-		return;
-	}
-	if (!(ports & BIT(cpu_port))) {
+	/*
+	 * cpu_port >= G8_NPORTS means "no forced port": on boards where the
+	 * SoC link enters the switch through one of its own PHYs (MDI from
+	 * the SoC's GE PHY, e.g. Xiaomi AX6000 port 4, Linksys SPNMX56 port
+	 * 5) the CPU port must autonegotiate like a front port, not be
+	 * forced to 1G FD as an SGMII/RGMII MAC port would be.
+	 */
+	if (cpu_port < G8_NPORTS && !(ports & BIT(cpu_port))) {
 		pr_warn("qca8337-nss: ports=0x%02x lacks cpu_port %u, adding it\n",
 			ports, cpu_port);
 		ports |= BIT(cpu_port);
 	}
-	pr_info("qca8337-nss: cpu_port=%u ports=0x%02x\n", cpu_port, ports);
+	if (cpu_port < G8_NPORTS)
+		pr_info("qca8337-nss: cpu_port=%u (forced 1G FD) ports=0x%02x\n",
+			cpu_port, ports);
+	else
+		pr_info("qca8337-nss: no forced cpu port (PHY-linked), ports=0x%02x\n",
+			ports);
 
 	for (p = 0; p < G8_NPORTS; p++) {
 		u32 lkp;
