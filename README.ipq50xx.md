@@ -78,6 +78,13 @@ CONFIG_NSS_DRV_VLAN_ENABLE=y
 CONFIG_NSS_DRV_IPV6_ENABLE=y
 CONFIG_NSS_DRV_VIRT_IF_ENABLE=y
 
+# PPPoE: the kernel side builds, but ECM only accelerates PPPoE when this
+# connection manager is present - without it flows are tracked and never
+# offloaded, with nothing in the log to say so.
+CONFIG_PACKAGE_kmod-ppp=y
+CONFIG_PACKAGE_kmod-pppoe=y
+CONFIG_PACKAGE_kmod-qca-nss-drv-pppoe=y
+
 # ath11k with the NSS patches applied. Not needed for the wired plane -
 # Wi-Fi stays on the host path - but this is the validated combination.
 CONFIG_PACKAGE_MAC80211_NSS_SUPPORT=y
@@ -260,7 +267,7 @@ Legend as in the [IPQ807x README](README.md): ✅ offloaded & validated ·
 | IPv6 routing | 🟨 | built (`NSS_DRV_IPV6_ENABLE`), not measured |
 | 802.1Q VLAN | ✅ | the trunk itself; `qca-nss-vlan` |
 | L2 between LAN ports | ✅ | in the switch fabric (same VLAN), never reaches the SoC |
-| PPPoE | ❌ | ECM does not build with PPP enabled against this kernel (`__ppp_hold_channels`); shipped compiled out. Independently, a PPPoE WAN on qosmio's IPQ5018 build tracks flows but never accelerates them. Nobody has PPPoE offload on this SoC yet. |
+| PPPoE | 🟨 | Builds and links now: kernel patch `0961` gained the lockless `__ppp_hold_channels()` / `__ppp_is_multilink()` that ECM's deadlock fix needs, and `kmod-qca-nss-drv-pppoe` is selected - without that manager ECM tracks PPPoE flows but silently never accelerates them (found by AugustoAmaral, who measured ~950 Mbit/s at 84-95 % idle on an AX6000 once it was in). Not measured here - no PPPoE uplink on this bench. |
 | Wi-Fi (wifili) | ❌ | firmware bug, see below; Wi-Fi runs on the host path |
 | SQM / NSS qdiscs | ⬜ | not carried for ipq50xx |
 | Multicast snooping (`qca-mcs`) | ⬜ | not carried for ipq50xx |

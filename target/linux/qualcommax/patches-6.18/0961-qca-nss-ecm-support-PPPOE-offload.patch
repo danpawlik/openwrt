@@ -105,7 +105,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  		/* remove it from the ppp unit's list */
  		ppp_lock(ppp);
  		list_del_rcu(&pch->clist);
-@@ -3656,6 +3714,227 @@ static void *unit_find(struct idr *p, in
+@@ -3656,6 +3714,302 @@ static void *unit_find(struct idr *p, in
  	return idr_find(p, n);
  }
  
@@ -175,6 +175,31 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 +	return 0;
 +}
 +EXPORT_SYMBOL(ppp_is_multilink);
++
++/* __ppp_is_multilink()
++ *	Lockless variant of ppp_is_multilink().
++ *
++ * For callers that already hold the ppp lock, or that run in a context
++ * where taking it would deadlock against the xmit path.
++ */
++int __ppp_is_multilink(struct net_device *dev)
++{
++	struct ppp *ppp;
++
++	if (!dev)
++		return -1;
++
++	if (dev->type != ARPHRD_PPP)
++		return -1;
++
++	ppp = netdev_priv(dev);
++
++	if (ppp->flags & SC_MULTILINK)
++		return 1;
++
++	return 0;
++}
++EXPORT_SYMBOL(__ppp_is_multilink);
 +
 +/* ppp_channel_get_protocol()
 + *	Call this to obtain the underlying protocol of the PPP channel,
@@ -313,6 +338,56 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 +	return c;
 +}
 +EXPORT_SYMBOL(ppp_hold_channels);
++
++/* __ppp_hold_channels()
++ *	Lockless variant of ppp_hold_channels().
++ *
++ * Same contract - the channels must be released with
++ * ppp_release_channels() - but the ppp lock is not taken, for callers
++ * that already hold it or that would deadlock against the xmit path.
++ */
++int __ppp_hold_channels(struct net_device *dev, struct ppp_channel *channels[],
++			unsigned int chan_sz)
++{
++	struct ppp *ppp;
++	int c;
++	struct channel *pch;
++
++	if (!dev)
++		return -1;
++
++	if (dev->type != ARPHRD_PPP)
++		return -1;
++
++	ppp = netdev_priv(dev);
++
++	c = 0;
++	list_for_each_entry(pch, &ppp->channels, clist) {
++		struct ppp_channel *chan;
++
++		if (!pch->chan) {
++			/* Channel is going / gone away */
++			continue;
++		}
++
++		if (c == chan_sz) {
++			/* No space to record channel */
++			return c;
++		}
++
++		/* Hold the channel, if supported */
++		chan = pch->chan;
++		if (!chan->ops->hold)
++			continue;
++
++		chan->ops->hold(chan);
++
++		 /* Record the channel */
++		channels[c++] = chan;
++	}
++	return c;
++}
++EXPORT_SYMBOL(__ppp_hold_channels);
 +
 +/* ppp_release_channels()
 + *	Releases channels
@@ -503,7 +578,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  	int	(*fill_forward_path)(struct net_device_path_ctx *,
  				     struct net_device_path *,
  				     const struct ppp_channel *);
-@@ -75,6 +89,50 @@ extern int ppp_unit_number(struct ppp_ch
+@@ -75,6 +89,56 @@ extern int ppp_unit_number(struct ppp_ch
  /* Get the device name associated with a channel, or NULL if none */
  extern char *ppp_dev_name(struct ppp_channel *);
  
@@ -526,6 +601,12 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 +				 unsigned int chan_sz);
 +
 +/* Hold PPP channels for the PPP device */
++extern int __ppp_hold_channels(struct net_device *dev,
++			       struct ppp_channel *channels[],
++			       unsigned int chan_sz);
++
++extern int __ppp_is_multilink(struct net_device *dev);
++
 +extern int ppp_hold_channels(struct net_device *dev,
 +				struct ppp_channel *channels[],
 +				unsigned int chan_sz);
