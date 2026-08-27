@@ -231,6 +231,11 @@ The board side is small. The parts, in order of effort:
 2. **Which GMAC feeds the switch.** On the B3000 it is GMAC1 (`fw_mask=0x2`,
    glue parameter `fw_if=1`, `ifname=eth0`). Only GMAC1 has been armed here;
    GMAC0 (the internal GE PHY) has not been tried.
+   Boards already in the table (`nss-dwmac.defaults`, keyed on
+   `board_name`, contributed by George Moussalem): GL-B3000, Linksys
+   MX2000, MX5500 and MR5500 - on those the settings apply themselves on
+   first boot. Anything else logs a line telling you to set them by hand.
+
 3. **The switch.** Find your MDIO device names with
    `ls /sys/bus/mdio_bus/devices/` and set `bus_via` / `wake_phys` from them;
    read the port wiring off the `ethernet-switch` node in your DTS and write

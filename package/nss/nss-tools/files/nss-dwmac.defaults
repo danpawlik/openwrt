@@ -5,16 +5,65 @@
 # topology serves both data paths, so this migration is one-way and guarded
 # by a marker - rerunning the script (or a sysupgrade that keeps settings)
 # changes nothing.
+#
+# The per-board table and the board_name keying are George Moussalem's
+# (https://gist.github.com/georgemoussalem/89a1a99d8516855d54533329d391b2ac),
+# folded in with permission.
+#
+# Adding a board: read its switch node in the DTS. cpu_port is the port
+# holding the 'ethernet' phandle; ports is the bitmask of every port in
+# the node; wake_phys lists the front PHYs on the SoC's MDIO bus; vtu
+# puts the CPU port tagged in both VLANs, the lan* ports untagged in 1
+# and wan untagged in 2. If the CPU link enters the switch through one of
+# the switch's own PHYs instead of an SGMII MAC port, use cpu_port=255
+# ("no forced port") and list that PHY in wake_phys too - it has to
+# autonegotiate like a front port.
+
+. /lib/functions.sh
+
+nss_dwmac_board_defaults() {
+	case "$1" in
+	glinet,gl-b3000)
+		# port 0 = CPU (SGMII), 1 = wan, 2-3 = lan
+		fw_mask='0x2'
+		switch_args=''
+		vtu='1:0t,2u,3u;2:0t,1u'
+		;;
+	linksys,mx2000|\
+	linksys,mx5500)
+		# port 6 = CPU (SGMII), 2 = wan, 3-5 = lan
+		fw_mask='0x2'
+		switch_args='cpu_port=6 ports=0x7c wake_phys=90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04'
+		vtu='1:6t,3u,4u,5u;2:6t,2u'
+		;;
+	linksys,mr5500)
+		# port 6 = CPU (SGMII), 5 = wan, 1-4 = lan
+		# needs openwrt/openwrt#24927 for the mdio-1 PHY names
+		fw_mask='0x2'
+		switch_args='cpu_port=6 ports=0x7e wake_phys=90000.mdio-1:00,90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04'
+		vtu='1:6t,1u,2u,3u,4u;2:6t,5u'
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
 
 [ "$(uci -q get nss.general.topology)" = "vlan-trunk" ] && exit 0
+
+board="$(board_name)"
+if ! nss_dwmac_board_defaults "$board"; then
+	logger -t nss "no NSS switch defaults for board '$board' - set nss.general.{vtu,switch_args} by hand (see README.ipq50xx.md)"
+fi
 
 # Defaults for the ipq50xx plane (the config file itself ships with
 # qca-nss-drv; only fill what is not set).
 [ -n "$(uci -q get nss.general.enabled)" ] || uci set nss.general.enabled='1'
 [ -n "$(uci -q get nss.general.wifi_offload)" ] || uci set nss.general.wifi_offload='0'
-[ -n "$(uci -q get nss.general.fw_mask)" ] || uci set nss.general.fw_mask='0x2'
-[ -n "$(uci -q get nss.general.vtu)" ] || uci set nss.general.vtu='1:0t,2u,3u;2:0t,1u'
 [ -n "$(uci -q get nss.general.fw_logbuf)" ] || uci set nss.general.fw_logbuf='256'
+[ -z "$(uci -q get nss.general.fw_mask)" ] && [ -n "$fw_mask" ] && uci set nss.general.fw_mask="$fw_mask"
+[ -z "$(uci -q get nss.general.vtu)" ] && [ -n "$vtu" ] && uci set nss.general.vtu="$vtu"
+[ -z "$(uci -q get nss.general.switch_args)" ] && [ -n "$switch_args" ] && uci set nss.general.switch_args="$switch_args"
 
 # br-lan: replace the DSA user ports with the lan VLAN on the trunk.
 lan_dev="$(uci -q get network.@device[0].name)"
