@@ -1,0 +1,126 @@
+--- a/drivers/net/wireless/ath/ath11k/nss.h
++++ b/drivers/net/wireless/ath/ath11k/nss.h
+@@ -34,6 +34,7 @@
+ #define ATH11K_WIFILI_TARGET_TYPE_QCA6018   25
+ #define ATH11K_WIFILI_TARGET_TYPE_QCN9074   26
+ #define ATH11K_WIFILI_TARGET_TYPE_QCA5018   29
++#define ATH11K_WIFILI_TARGET_TYPE_QCN6122   30
+ 
+ /* Max limit for NSS Queue */
+ #define ATH11K_WIFIILI_MAX_TX_PROCESSQ 1024
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -3677,6 +3677,20 @@
+ 	return 0;
+ }
+ 
++/* E148: an external wifili interface number is allocated from a pool of
++ * two (EXTERNAL_INTERFACE0/1) by nss_get_available_wifili_external_if()
++ * and is not freed by nss_unregister_wifili_if(). Without giving it back
++ * on teardown, the third init after two userPD recoveries finds the pool
++ * empty and the driver BUG()s. The internal interface is a fixed number
++ * and needs nothing.
++ */
++static void ath11k_nss_release_external_if(struct ath11k_base *ab)
++{
++	if (ab->nss.if_num == NSS_WIFILI_EXTERNAL_INTERFACE0 ||
++	    ab->nss.if_num == NSS_WIFILI_EXTERNAL_INTERFACE1)
++		nss_wifili_release_external_if(ab->nss.if_num);
++}
++
+ static int ath11k_nss_get_target_type(struct ath11k_base *ab)
+ {
+ 	switch (ab->hw_rev) {
+@@ -3688,6 +3702,13 @@
+ 		return ATH11K_WIFILI_TARGET_TYPE_QCN9074;
+ 	case ATH11K_HW_IPQ5018_HW10:
+ 		return ATH11K_WIFILI_TARGET_TYPE_QCA5018;
++	case ATH11K_HW_QCN6122_HW10:
++		/* E148: the attached radio of the IPQ5018 boards. Target type
++		 * 30 is what the stock qca-wifi host hands the 12.2 MP firmware
++		 * for this chip, and the firmware runs it on an external wifili
++		 * interface exactly like a QCN9074.
++		 */
++		return ATH11K_WIFILI_TARGET_TYPE_QCN6122;
+ 	default:
+ 		ath11k_warn(ab, "NSS Offload not supported for this HW\n");
+ 		return ATH11K_WIFILI_TARGET_TYPE_UNKNOWN;
+@@ -3702,6 +3723,7 @@
+ 	case ATH11K_HW_IPQ5018_HW10:
+ 		return NSS_WIFILI_INTERNAL_INTERFACE;
+ 	case ATH11K_HW_QCN9074_HW10:
++	case ATH11K_HW_QCN6122_HW10:
+ 		return nss_get_available_wifili_external_if();
+ 	default:
+ 		/* This can't happen since we validated target type earlier */
+@@ -3912,6 +3934,7 @@
+ 
+ unregister:
+ 	nss_unregister_wifili_if(ab->nss.if_num);
++	ath11k_nss_release_external_if(ab);
+ free:
+ 	ath11k_nss_tx_desc_mem_free(ab);
+ 	kfree(wlmsg);
+@@ -4235,6 +4258,7 @@
+ 
+ 	/* Unregister wifili interface */
+ 	nss_unregister_wifili_if(ab->nss.if_num);
++	ath11k_nss_release_external_if(ab);
+ 
+ free:
+ 	kfree(wlmsg);
+--- a/drivers/net/wireless/ath/ath11k/ahb.c
++++ b/drivers/net/wireless/ath/ath11k/ahb.c
+@@ -856,6 +856,25 @@
+ 	.ce_irq_disable = ath11k_pci_disable_ce_irqs_except_wake_irq,
+ };
+ 
++/* E148: the NSS firmware addresses this radio's ring registers through
++ * the same static windows the host does (UMAC in window 1, CE in window
++ * 2 - see ath11k_ahb_config_static_window_qcn6122()), so the offsets
++ * handed to it in the wifili init message must be window-relative.
++ * Without this hook ath11k_hif_get_window_offset() returns the raw
++ * register offset, which lies outside the mapped range, and the firmware
++ * programs rings that do not exist.
++ */
++static u32 ath11k_ahb_get_window_offset_qcn6122(struct ath11k_base *ab,
++						 u32 offset)
++{
++	u32 window_start = ath11k_ahb_get_window_start_wcn6750(ab, offset);
++
++	if (window_start)
++		offset = window_start + (offset & ATH11K_PCI_WINDOW_RANGE_MASK);
++
++	return offset;
++}
++
+ static const struct ath11k_hif_ops ath11k_ahb_hif_ops_qcn6122 = {
+ 	.start = ath11k_pcic_start,
+ 	.stop = ath11k_pcic_stop,
+@@ -872,6 +891,7 @@
+ 	.ce_irq_enable = ath11k_pci_enable_ce_irqs_except_wake_irq,
+ 	.ce_irq_disable = ath11k_pci_disable_ce_irqs_except_wake_irq,
+ 	.config_static_window = ath11k_ahb_config_static_window_qcn6122,
++	.get_window_offset = ath11k_ahb_get_window_offset_qcn6122,
+ };
+ 
+ static int ath11k_core_get_rproc(struct ath11k_base *ab)
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
+@@ -2204,6 +2204,16 @@
+ 
+ 	ab->mem = bar_addr_va;
+ 	ab->mem_len = resp.bar_size;
++	/* E149: the NSS wifili path hands the firmware physical register
++	 * addresses derived from mem_pa (hssm.dev_base_addr and every ring's
++	 * hwreg_base[]). On a hybrid-bus radio the BAR comes from this QMI
++	 * reply, not from the DTS, and nothing else fills mem_pa in - so the
++	 * firmware was told the registers live at physical 0 and stalled on
++	 * the first access after the VAP came up.
++	 */
++	ab->mem_pa = resp.bar_addr;
++	ath11k_info(ab, "hybrid bus BAR 0x%llx size 0x%x\n",
++		    (unsigned long long)resp.bar_addr, resp.bar_size);
+ 
+ 	if (!ab->hw_params.ce_remap)
+ 		ab->mem_ce = ab->mem;
