@@ -26,6 +26,7 @@ nss_dwmac_board_defaults() {
 	glinet,gl-b3000)
 		# port 0 = CPU (SGMII), 1 = wan, 2-3 = lan
 		fw_mask='0x2'
+		trunk='eth0'
 		switch_args=''
 		vtu='1:0t,2u,3u;2:0t,1u'
 		;;
@@ -33,6 +34,7 @@ nss_dwmac_board_defaults() {
 	linksys,mx5500)
 		# port 6 = CPU (SGMII), 2 = wan, 3-5 = lan
 		fw_mask='0x2'
+		trunk='eth0'
 		switch_args='cpu_port=6 ports=0x7c wake_phys=90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04'
 		vtu='1:6t,3u,4u,5u;2:6t,2u'
 		;;
@@ -40,6 +42,7 @@ nss_dwmac_board_defaults() {
 		# port 6 = CPU (SGMII), 5 = wan, 1-4 = lan
 		# needs openwrt/openwrt#24927 for the mdio-1 PHY names
 		fw_mask='0x2'
+		trunk='eth0'
 		switch_args='cpu_port=6 ports=0x7e wake_phys=90000.mdio-1:00,90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04'
 		vtu='1:6t,1u,2u,3u,4u;2:6t,5u'
 		;;
@@ -52,7 +55,9 @@ nss_dwmac_board_defaults() {
 [ "$(uci -q get nss.general.topology)" = "vlan-trunk" ] && exit 0
 
 board="$(board_name)"
+known_board=1
 if ! nss_dwmac_board_defaults "$board"; then
+	known_board=0
 	logger -t nss "no NSS switch defaults for board '$board' - set nss.general.{vtu,switch_args} by hand (see README.ipq50xx.md)"
 fi
 
@@ -64,19 +69,31 @@ fi
 [ -z "$(uci -q get nss.general.fw_mask)" ] && [ -n "$fw_mask" ] && uci set nss.general.fw_mask="$fw_mask"
 [ -z "$(uci -q get nss.general.vtu)" ] && [ -n "$vtu" ] && uci set nss.general.vtu="$vtu"
 [ -z "$(uci -q get nss.general.switch_args)" ] && [ -n "$switch_args" ] && uci set nss.general.switch_args="$switch_args"
+# The trunk netdev: GMAC1's name. eth0 wherever GMAC0 is unused (every board
+# in the table above); eth1 on a board whose GMAC0 is the WAN PHY (Xunison
+# D50) - those set nss.general.trunk by hand until they get a table entry.
+[ -z "$(uci -q get nss.general.trunk)" ] && [ -n "$trunk" ] && uci set nss.general.trunk="$trunk"
 
-# br-lan: replace the DSA user ports with the lan VLAN on the trunk.
-lan_dev="$(uci -q get network.@device[0].name)"
-if [ "$lan_dev" = "br-lan" ]; then
-	uci -q delete network.@device[0].ports
-	uci add_list network.@device[0].ports='eth0.1'
+# Rewrite the network only for a board this script actually knows. On an
+# unknown board the trunk may not be the right topology at all - e.g. the
+# Xunison Exigo D50 puts WAN on its own GE PHY and hangs only LAN ports off
+# the switch, so there is no wan VLAN to move anything to, and forcing
+# eth0.1/eth0.2 here left it with a WAN device that does not exist.
+if [ "$known_board" = 1 ]; then
+	# br-lan: replace the DSA user ports with the lan VLAN on the trunk.
+	lan_dev="$(uci -q get network.@device[0].name)"
+	if [ "$lan_dev" = "br-lan" ]; then
+		uci -q delete network.@device[0].ports
+		uci add_list network.@device[0].ports='eth0.1'
+	fi
+
+	# wan/wan6: the wan VLAN on the trunk instead of the DSA wan port.
+	[ -n "$(uci -q get network.wan)" ] && uci set network.wan.device='eth0.2'
+	[ -n "$(uci -q get network.wan6)" ] && uci set network.wan6.device='eth0.2'
+
+	uci set nss.general.topology='vlan-trunk'
 fi
 
-# wan/wan6: the wan VLAN on the trunk instead of the DSA wan port.
-[ -n "$(uci -q get network.wan)" ] && uci set network.wan.device='eth0.2'
-[ -n "$(uci -q get network.wan6)" ] && uci set network.wan6.device='eth0.2'
-
-uci set nss.general.topology='vlan-trunk'
 uci commit
 
 exit 0

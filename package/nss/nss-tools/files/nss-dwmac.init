@@ -57,13 +57,18 @@ wifi_load() {
 #   nss.general.switch_args  any further qca8337-nss parameters, verbatim,
 #                            e.g. 'cpu_port=6 ports=0x7c wake_phys=...'
 #                            for a board with the CPU port on port 6
+. /lib/functions.sh
+
 switch_to_trunk() {
 	local dev vtu args
 
 	dev="$(uci -q get nss.general.switch_dev)"
 	[ -n "$dev" ] || dev="90000.mdio-1:11"
 	vtu="$(uci -q get nss.general.vtu)"
-	[ -n "$vtu" ] || vtu="1:0t,2u,3u;2:0t,1u"
+	# The built-in VTU program is the GL-B3000's wiring. It used to be the
+	# fallback for every board, which split a LAN-only switch (Xunison D50)
+	# into two VLANs nobody had asked for. Empty vtu now means VTU off.
+	[ -n "$vtu" ] || [ "$(board_name)" != "glinet,gl-b3000" ] || vtu="1:0t,2u,3u;2:0t,1u"
 	args="$(uci -q get nss.general.switch_args)"
 
 	if [ -e "/sys/bus/mdio_bus/drivers/qca8k/$dev" ]; then
@@ -72,8 +77,13 @@ switch_to_trunk() {
 	fi
 	# kmodloader's modprobe drops module parameters - insmod passes them.
 	# shellcheck disable=SC2086
-	insmod "/lib/modules/$(uname -r)/qca8337-nss.ko" vlans="$vtu" $args 2>/dev/null ||
-		modprobe qca8337-nss 2>/dev/null
+	if [ -n "$vtu" ]; then
+		insmod "/lib/modules/$(uname -r)/qca8337-nss.ko" vlans="$vtu" $args 2>/dev/null ||
+			modprobe qca8337-nss 2>/dev/null
+	else
+		insmod "/lib/modules/$(uname -r)/qca8337-nss.ko" $args 2>/dev/null ||
+			modprobe qca8337-nss 2>/dev/null
+	fi
 }
 
 start_service() {
@@ -105,7 +115,15 @@ start_service() {
 	# netdevice notifier replays NETDEV_REGISTER for every netdev that
 	# already exists, so netifd's eth0.<vid> are picked up regardless of
 	# who came first.
-	modprobe qca-dwmac-nss 2>/dev/null
+	# The trunk is whatever netdev the switch-side GMAC (GMAC1) got: eth0 on
+	# boards where GMAC0 is unused (GL-B3000, Linksys), eth1 where GMAC0 is
+	# the WAN PHY (Xunison D50). nss.general.trunk names it; the glue must
+	# get it as a parameter, so insmod (kmodloader's modprobe drops them).
+	local trunk
+	trunk="$(uci -q get nss.general.trunk)"
+	[ -n "$trunk" ] || trunk=eth0
+	insmod "/lib/modules/$(uname -r)/qca-dwmac-nss.ko" ifname="$trunk" 2>/dev/null ||
+		modprobe qca-dwmac-nss 2>/dev/null
 	modprobe qca-nss-drv 2>/dev/null
 
 	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.

@@ -12,6 +12,8 @@ set -e
 
 GLUE_STATUS=/sys/kernel/debug/qca-dwmac-nss/status
 FWM=/sys/kernel/debug/qca-dwmac-nss/fw_mask
+TRUNK="$(uci -q get nss.general.trunk)"
+[ -n "$TRUNK" ] || TRUNK=eth0
 
 # Arm the firmware data plane only once netifd has FINISHED with the
 # trunk. Three measured failure modes force this:
@@ -26,9 +28,9 @@ FWM=/sys/kernel/debug/qca-dwmac-nss/fw_mask
 # the bridge's promiscuous flag on the trunk - then give the device
 # churn a moment to drain and arm exactly once.
 eth_up() {
-  [ "$(cat /sys/class/net/eth0/operstate 2>/dev/null)" = "up" ]
+  [ "$(cat /sys/class/net/$TRUNK/operstate 2>/dev/null)" = "up" ]
 }
-poll_until 30 eth_up || echo "WARN: eth0 not up after 30s, arming anyway"
+poll_until 30 eth_up || echo "WARN: $TRUNK not up after 30s, arming anyway"
 
 lan_up() {
   ubus call network.interface.lan status 2>/dev/null | grep -q '"up": true'
@@ -36,9 +38,9 @@ lan_up() {
 poll_until 30 lan_up || echo "WARN: netifd lan not up after 30s, arming anyway"
 
 eth_promisc() {
-  [ $(( $(cat /sys/class/net/eth0/flags 2>/dev/null || echo 0) & 0x100 )) -ne 0 ]
+  [ $(( $(cat /sys/class/net/$TRUNK/flags 2>/dev/null || echo 0) & 0x100 )) -ne 0 ]
 }
-poll_until 15 eth_promisc || echo "WARN: eth0 not promiscuous after 15s, arming anyway"
+poll_until 15 eth_promisc || echo "WARN: $TRUNK not promiscuous after 15s, arming anyway"
 
 sleep 3
 
@@ -125,7 +127,7 @@ fi
 # One-shot state dump for the boot log - what the data plane looks like
 # right after bring-up (no periodic monitoring, by design).
 echo "nss-dwmac diag: $(cat $GLUE_STATUS 2>/dev/null | tr '\n' ' ')"
-for i in eth0 eth0.1 eth0.2; do
+for i in $TRUNK $(ls /sys/class/net | grep "^$TRUNK\."); do
   [ -d /sys/class/net/$i ] &&
     echo "nss-dwmac diag: $i rx=$(cat /sys/class/net/$i/statistics/rx_packets)/$(cat /sys/class/net/$i/statistics/rx_bytes)B tx=$(cat /sys/class/net/$i/statistics/tx_packets)"
 done

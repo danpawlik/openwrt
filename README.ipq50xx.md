@@ -165,7 +165,8 @@ migrates an existing DSA-style network config once (`br-lan` ports →
 | `enabled` | `1` | `0` = stay on the host stack (same topology, no firmware) |
 | `wifi_offload` | `0` | `1` = load ath11k with `nss_offload=1`. **Investigation only** - see *Wi-Fi*. |
 | `fw_mask` | `0x2` | bitmask of GMACs to hand to the firmware; bit N = GMAC N. Only GMAC1 is validated. |
-| `vtu` | `1:0t,2u,3u;2:0t,1u` | VTU program for `qca8337-nss` (B3000 wiring - see *Porting*) |
+| `vtu` | *(B3000 wiring on the B3000, empty elsewhere)* | VTU program for `qca8337-nss`; empty = VTU off, the switch stays one untagged LAN. Only needed when WAN shares the trunk (see *Porting*) |
+| `trunk` | `eth0` | the switch trunk netdev = GMAC1. `eth1` on a board whose GMAC0 is the WAN PHY (Xunison D50). |
 | `switch_dev` | `90000.mdio-1:11` | the switch's MDIO device, unbound from `qca8k` before the re-arm |
 | `switch_args` | *(empty)* | further `qca8337-nss` parameters, passed verbatim (`cpu_port=`, `ports=`, `wake_phys=`, `bus_via=`) |
 | `fw_logbuf` | `256` | firmware log ring size, read at `/sys/kernel/debug/qca-nss-drv/logs` |
