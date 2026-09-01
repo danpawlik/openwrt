@@ -16,7 +16,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 ---
 --- a/airoha_offload.h
 +++ b/airoha_offload.h
-@@ -21,6 +21,11 @@
+@@ -21,6 +21,11 @@ struct airoha_ppe_dev {
  		void (*check_skb)(struct airoha_ppe_dev *dev,
  				  struct sk_buff *skb, u16 hash,
  				  bool rx_wlan);
@@ -26,9 +26,9 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +		void (*flush_flows_by_mac)(struct airoha_ppe_dev *dev,
 +					   const u8 *addr);
  	} ops;
-
+ 
  	void *priv;
-@@ -42,6 +47,13 @@
+@@ -42,6 +47,13 @@ static inline void airoha_ppe_dev_check_skb(struct airoha_ppe_dev *dev,
  {
  	dev->ops.check_skb(dev, skb, hash, rx_wlan);
  }
@@ -42,21 +42,21 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  #else
  static inline struct airoha_ppe_dev *airoha_ppe_get_dev(struct device *dev)
  {
-@@ -61,6 +73,11 @@
- static inline void airoha_ppe_dev_check_skb(struct airoha_ppe_dev *dev,
- 					    struct sk_buff *skb, u16 hash,
+@@ -63,6 +75,11 @@ static inline void airoha_ppe_dev_check_skb(struct airoha_ppe_dev *dev,
  					    bool rx_wlan)
-+{
-+}
+ {
+ }
 +
 +static inline void airoha_ppe_dev_flush_flows_by_mac(struct airoha_ppe_dev *dev,
 +						     const u8 *addr)
- {
- }
++{
++}
  #endif
+ 
+ #define NPU_NUM_CORES		8
 --- a/mt7996/main.c
 +++ b/mt7996/main.c
-@@ -1192,6 +1192,33 @@
+@@ -1390,6 +1390,33 @@ mt7996_mac_sta_init_link(struct mt7996_dev *dev,
  	return 0;
  }
  
@@ -90,13 +90,13 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  void mt7996_mac_sta_remove_link(struct mt7996_dev *dev,
  				struct ieee80211_sta *sta,
  				unsigned int link_id, bool flush)
-@@ -1202,6 +1229,9 @@
- 	msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
+@@ -1401,6 +1428,9 @@ void mt7996_mac_sta_remove_link(struct mt7996_dev *dev,
  	if (!msta_link)
  		return;
-+
+ 
 +	/* Same-BSS reassoc often skips FDB move; flush PPE on STA teardown. */
 +	mt7996_ppe_flush_sta(dev, sta, link_id);
- 
- 	spin_lock_bh(&dev->mt76.sta_poll_lock);
- 	if (!list_empty(&msta_link->wcid.poll_list))
++
+ 	if (flush) {
+ 		rcu_assign_pointer(msta->link[link_id], NULL);
+ 		rcu_assign_pointer(dev->mt76.wcid[msta_link->wcid.idx], NULL);
