@@ -25,19 +25,20 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
-@@ -302,5 +302,6 @@ void nf_flow_table_free(struct nf_flowtable *flow_table);
-
+@@ -303,6 +303,7 @@ void nf_flow_table_free(struct nf_flowtable *flow_table);
+ 
  void flow_offload_teardown(struct flow_offload *flow);
+ void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple);
 +void flow_offload_teardown_by_eth(const u8 *addr);
-
+ 
  void nf_flow_snat_port(const struct flow_offload *flow,
  		       struct sk_buff *skb, unsigned int thoff,
 
 --- a/net/netfilter/nf_flow_table_core.c
 +++ b/net/netfilter/nf_flow_table_core.c
-@@ -388,6 +388,43 @@ void flow_offload_teardown(struct flow_offload *flow)
+@@ -417,6 +417,43 @@ void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple)
  }
- EXPORT_SYMBOL_GPL(flow_offload_teardown);
+ EXPORT_SYMBOL_GPL(flow_offload_teardown_by_tuple);
  
 +static void nf_flow_teardown_if_eth(struct nf_flowtable *flow_table,
 +				    struct flow_offload *flow, void *data)
