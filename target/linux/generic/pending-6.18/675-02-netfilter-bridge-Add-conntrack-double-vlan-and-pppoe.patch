@@ -114,7 +114,7 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
  #else
  	return NF_ACCEPT;
  #endif
-@@ -237,58 +253,139 @@ static int nf_ct_br_ipv6_check(const str
+@@ -237,59 +253,140 @@ static int nf_ct_br_ipv6_check(const str
  	return 0;
  }
  
@@ -254,6 +254,7 @@ Signed-off-by: Eric Woudstra <ericwouds@gmail.com>
 +		ret = nf_ct_br_defrag6(skb, &bridge_state, offset);
  		break;
  	default:
+ 		nf_reset_ct(skb);
  		nf_ct_set(skb, NULL, IP_CT_UNTRACKED);
 -		return NF_ACCEPT;
 +		goto do_not_track;
