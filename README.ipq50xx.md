@@ -57,6 +57,21 @@ make menuconfig
 make -j$(nproc)
 ```
 
+**Select `nss-tools-dwmac` in menuconfig** (Network -> nss-tools-dwmac, or
+`CONFIG_PACKAGE_nss-tools-dwmac=y`). It pulls in every kmod the plane
+needs, and it is the package that actually arms the firmware: without it
+the glue and the driver load, wait for each other and nothing happens -
+`fw_mask` stays `0x0` and the log says "deferring NSS core probe until a
+port is armed". Two people have been caught by this, so the one check
+worth doing on a fresh image is:
+
+```sh
+ls /etc/rc.d | grep S19nss     # the arming service is installed
+logread -e nss                 # ends with "NSS wired plane + ECM up"
+```
+
+Note the service installs as `/etc/init.d/nss`, not `nss-dwmac`.
+
 The `.config` the validated image was built from, reduced to what matters
 (everything the packages depend on is pulled in by `nss-tools-dwmac`):
 
