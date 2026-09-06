@@ -76,6 +76,13 @@ if ! nss_dwmac_board_defaults "$board"; then
 	logger -t nss "no NSS switch defaults for board '$board' - set nss.general.{vtu,switch_args} by hand (see README.ipq50xx.md)"
 fi
 
+# qca-nss-drv's own init does nothing but interrupt affinity and firmware
+# RPS, from a table written for a quad-core ipq807x, at START=94 - before
+# the plane is armed, so the interrupts it wants do not exist yet and the
+# CPU 2/3 writes fail on this SoC. nss-irq-affinity does the same job from
+# nss-dwmac-up, after the arm, so keep the driver's version out of the way.
+[ -x /etc/init.d/qca-nss-drv ] && /etc/init.d/qca-nss-drv disable
+
 # Defaults for the ipq50xx plane (the config file itself ships with
 # qca-nss-drv; only fill what is not set).
 [ -n "$(uci -q get nss.general.enabled)" ] || uci set nss.general.enabled='1'

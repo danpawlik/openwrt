@@ -124,6 +124,14 @@ else
   echo "WARN: NSS plane armed but ECM is not accelerating (no ecm_nss_ipv4 in debugfs) - check 'logread | grep -i ecm'"
 fi
 
+# Everything is registered by now - the NSS queues at the arm, the copy
+# engines at ath11k probe - so this is the first moment the interrupts
+# can be placed on the two cores. See the script for why the driver's
+# own version of it cannot do the job here.
+if [ -x /usr/sbin/nss-irq-affinity ]; then
+  /usr/sbin/nss-irq-affinity || echo "WARN: interrupt placement failed"
+fi
+
 # One-shot state dump for the boot log - what the data plane looks like
 # right after bring-up (no periodic monitoring, by design).
 echo "nss-dwmac diag: $(cat $GLUE_STATUS 2>/dev/null | tr '\n' ' ')"
