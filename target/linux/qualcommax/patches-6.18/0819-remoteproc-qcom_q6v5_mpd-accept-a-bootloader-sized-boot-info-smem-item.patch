@@ -1,0 +1,38 @@
+From: Stanislaw Kuncy <stefdo61@gmail.com>
+Subject: [PATCH] remoteproc: qcom_q6v5_mpd: accept a bootloader-sized boot-info SMEM item
+
+On the GL.iNet GL-B3000 the bootloader pre-allocates SMEM item 507 with
+a size other than UPD_BOOT_INFO_SMEM_SIZE, so share_upd_bootinfo_to_q6()
+refused it and the board could never pass boot-args to the Q6 - which is
+why its DTS has them commented out and the QCN6122 lands on user PD 3.
+The record written into the item is a few dozen bytes; accept any item
+the bootloader gives us and log its size.
+
+Based on the fix Hostle posted in the OpenWrt forum (t/253014 #69).
+
+--- a/drivers/remoteproc/qcom_q6v5_mpd.c
++++ b/drivers/remoteproc/qcom_q6v5_mpd.c
+@@ -324,12 +324,22 @@
+ 	}
+ 
+ 	ptr = qcom_smem_get(REMOTE_PID, UPD_BOOT_INFO_SMEM_ID, &size);
+-	if (IS_ERR(ptr) || size != UPD_BOOT_INFO_SMEM_SIZE) {
++	if (IS_ERR(ptr)) {
+ 		dev_err(wcss->dev,
+ 			"Unable to acquire smp2p item(%d) ret:%ld\n",
+ 			UPD_BOOT_INFO_SMEM_ID, PTR_ERR(ptr));
+ 		return PTR_ERR(ptr);
+ 	}
++	/*
++	 * Some bootloaders (GL.iNet GL-B3000) pre-allocate this item with a
++	 * size other than UPD_BOOT_INFO_SMEM_SIZE; refusing it left the Q6
++	 * without any user PD boot info. The record written below is far
++	 * smaller than any sane item, so accept it and say what we got.
++	 */
++	if (size != UPD_BOOT_INFO_SMEM_SIZE)
++		dev_info(wcss->dev,
++			 "q6 bootinfo smem item %d has size %zu (expected %d), using it\n",
++			 UPD_BOOT_INFO_SMEM_ID, size, UPD_BOOT_INFO_SMEM_SIZE);
+ 
+ 	/*Version*/
+ 	version = (wcss->desc->bootargs_version) ? wcss->desc->bootargs_version : VERSION2;
