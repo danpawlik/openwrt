@@ -2,6 +2,7 @@
 
 #include <linux/bitmap.h>
 #include <linux/if_bridge.h>
+#include <linux/soc/qcom/qca_ppe.h>
 
 #include "qca_ppe.h"
 
