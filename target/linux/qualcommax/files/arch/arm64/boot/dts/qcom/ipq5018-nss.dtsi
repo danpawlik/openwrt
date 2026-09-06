@@ -52,7 +52,7 @@
 		qcom,num-pri = <4>;
 		qcom,load-addr = <0x40000000>;
 		qcom,low-frequency = <850000000>;
-		qcom,mid-frequency = <850000000>;
+		qcom,mid-frequency = <1000000000>;
 		qcom,max-frequency = <1000000000>;
 		qcom,ipv4-enabled;
 		qcom,ipv4-reasm-enabled;
