@@ -36,11 +36,9 @@ Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
  drivers/net/wireless/ath/ath11k/core.c | 5 +++++
  1 file changed, 5 insertions(+)
 
-diff --git a/drivers/net/wireless/ath/ath11k/core.c b/drivers/net/wireless/ath/ath11k/core.c
-index 4a2ccb9..d28994b 100644
 --- a/drivers/net/wireless/ath/ath11k/core.c
 +++ b/drivers/net/wireless/ath/ath11k/core.c
-@@ -2413,6 +2413,11 @@ static int ath11k_core_reconfigure_on_crash(struct ath11k_base *ab)
+@@ -2413,6 +2413,11 @@ static int ath11k_core_reconfigure_on_cr
  
  	clear_bit(ATH11K_FLAG_CRASH_FLUSH, &ab->dev_flags);
  

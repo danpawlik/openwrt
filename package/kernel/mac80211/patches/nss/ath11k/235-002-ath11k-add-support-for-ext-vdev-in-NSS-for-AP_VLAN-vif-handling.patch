@@ -15,11 +15,9 @@ Signed-off-by: Sathishkumar Muruganandam <murugana@codeaurora.org>
  drivers/net/wireless/ath/ath11k/nss.h |  57 +++++
  2 files changed, 495 insertions(+), 14 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/nss.c b/drivers/net/wireless/ath/ath11k/nss.c
-index e6bac3c..c09d42f 100644
 --- a/drivers/net/wireless/ath/ath11k/nss.c
 +++ b/drivers/net/wireless/ath/ath11k/nss.c
-@@ -335,6 +335,10 @@ void ath11k_nss_wifili_event_receive(struct ath11k_base *ab, struct nss_wifili_m
+@@ -323,6 +323,10 @@ void ath11k_nss_wifili_event_receive(str
  		ath11k_dbg(ab, ATH11K_DBG_NSS_WDS, "nss wifili wds peer del event received %d response %d error %d\n",
  			   msg_type, response, error);
  		break;
@@ -30,7 +28,7 @@ index e6bac3c..c09d42f 100644
  	default:
  		ath11k_dbg(ab, ATH11K_DBG_NSS, "unhandled event %d\n", msg_type);
  		break;
-@@ -568,8 +572,9 @@ static int ath11k_nss_undecap_nwifi(struct ath11k_vif *arvif, struct sk_buff *sk
+@@ -556,8 +560,9 @@ static int ath11k_nss_undecap_nwifi(stru
  	return 0;
  }
  
@@ -42,7 +40,7 @@ index e6bac3c..c09d42f 100644
  {
  	struct ath11k_base *ab = ar->ab;
  	struct ath11k_ast_entry *ast_entry = NULL;
-@@ -591,19 +596,22 @@ static void ath11k_nss_wds_type_rx(struct ath11k *ar, u8* src_mac, u8 is_sa_vali
+@@ -579,19 +584,22 @@ static void ath11k_nss_wds_type_rx(struc
  		if (!is_sa_valid) {
  			ath11k_peer_add_ast(ar, ta_peer, src_mac,
  					    ATH11K_AST_TYPE_WDS);
@@ -70,7 +68,7 @@ index e6bac3c..c09d42f 100644
  	}
  
  	spin_unlock_bh(&ab->base_lock);
-@@ -647,7 +655,8 @@ static void ath11k_nss_mec_handler(struct ath11k *ar, u8* mec_mac_addr)
+@@ -635,7 +643,8 @@ static void ath11k_nss_mec_handler(struc
  
  static void ath11k_nss_vdev_spl_receive_ext_wdsdata(struct ath11k_vif *arvif,
  						    struct sk_buff *skb,
@@ -80,7 +78,7 @@ index e6bac3c..c09d42f 100644
  {
  	struct ath11k *ar = arvif->ar;
  	struct ath11k_base *ab = ar->ab;
-@@ -668,8 +677,8 @@ static void ath11k_nss_vdev_spl_receive_ext_wdsdata(struct ath11k_vif *arvif,
+@@ -656,8 +665,8 @@ static void ath11k_nss_vdev_spl_receive_
  
  	switch (wds_type) {
  		case NSS_WIFI_VDEV_WDS_TYPE_RX:
@@ -91,7 +89,7 @@ index e6bac3c..c09d42f 100644
  			break;
  		case NSS_WIFI_VDEV_WDS_TYPE_MEC:
  			ath11k_nss_mec_handler(ar, (u8 *)(skb->data));
-@@ -736,6 +745,7 @@ ath11k_nss_vdev_special_data_receive(struct net_device *dev, struct sk_buff *skb
+@@ -724,6 +733,7 @@ ath11k_nss_vdev_special_data_receive(str
  	struct ieee80211_vif *vif;
  	struct ath11k_vif *arvif;
  	struct ath11k_base *ab;
@@ -99,7 +97,7 @@ index e6bac3c..c09d42f 100644
  	bool eth_decap = false;
  	int data_offs = 0;
  	int ret = 0;
-@@ -791,10 +801,11 @@ ath11k_nss_vdev_special_data_receive(struct net_device *dev, struct sk_buff *skb
+@@ -779,10 +789,11 @@ ath11k_nss_vdev_special_data_receive(str
  	    NSS_WIFI_VDEV_EXT_DATA_PKT_TYPE_WDS_LEARN) {
  		wds_metadata = &wifi_metadata->metadata.wds_metadata;
  		ath11k_nss_vdev_spl_receive_ext_wdsdata(arvif, skb,
@@ -113,7 +111,7 @@ index e6bac3c..c09d42f 100644
  }
  
  static void
-@@ -857,6 +868,68 @@ ath11k_nss_vdev_data_receive(struct net_device *dev, struct sk_buff *skb,
+@@ -845,6 +856,68 @@ ath11k_nss_vdev_data_receive(struct net_
  	ath11k_nss_deliver_rx(arvif->vif, skb, eth_decap, data_offs, napi);
  }
  
@@ -182,17 +180,18 @@ index e6bac3c..c09d42f 100644
  int ath11k_nss_tx(struct ath11k_vif *arvif, struct sk_buff *skb)
  {
  	struct ath11k *ar = arvif->ar;
-@@ -881,10 +954,16 @@ int ath11k_nss_tx(struct ath11k_vif *arvif, struct sk_buff *skb)
+@@ -869,10 +942,16 @@ int ath11k_nss_tx(struct ath11k_vif *arv
  		ath11k_nss_tx_encap_nwifi(skb);
  
  send:
 -	ath11k_dbg_dump(ar->ab, ATH11K_DBG_DP_TX, "", "nss tx msdu: ",
 -			skb->data, skb->len);
+-
+-	status = nss_wifi_vdev_tx_buf(arvif->ar->nss.ctx, skb, arvif->nss.if_num);
 +	ath11k_dbg_dump(ar->ab, ATH11K_DBG_DP_TX,
 +			arvif->vif->type == NL80211_IFTYPE_AP_VLAN ? "ext vdev" : "",
 +			"nss tx msdu: ", skb->data, skb->len);
- 
--	status = nss_wifi_vdev_tx_buf(arvif->ar->nss.ctx, skb, arvif->nss.if_num);
++
 +	if (arvif->vif->type == NL80211_IFTYPE_AP_VLAN)
 +		status = nss_wifi_ext_vdev_tx_buf(arvif->nss.ctx, skb,
 +						  arvif->nss.if_num);
@@ -202,7 +201,7 @@ index e6bac3c..c09d42f 100644
  
  	if (status != NSS_TX_SUCCESS) {
  		ath11k_dbg(ar->ab, (ATH11K_DBG_NSS | ATH11K_DBG_DP_TX),
-@@ -1226,6 +1305,7 @@ int ath11k_nss_vdev_up(struct ath11k_vif *arvif)
+@@ -1214,6 +1293,7 @@ int ath11k_nss_vdev_up(struct ath11k_vif
  	struct nss_wifi_vdev_msg *vdev_msg = NULL;
  	struct nss_wifi_vdev_enable_msg *vdev_en;
  	struct ath11k *ar = arvif->ar;
@@ -210,7 +209,7 @@ index e6bac3c..c09d42f 100644
  	nss_tx_status_t status;
  	int ret = 0;
  
-@@ -1257,6 +1337,12 @@ int ath11k_nss_vdev_up(struct ath11k_vif *arvif)
+@@ -1245,6 +1325,12 @@ int ath11k_nss_vdev_up(struct ath11k_vif
  	}
  
  	ath11k_dbg(ar->ab, ATH11K_DBG_NSS, "nss vdev up tx msg success\n");
@@ -223,7 +222,7 @@ index e6bac3c..c09d42f 100644
  free:
  	kfree(vdev_msg);
  	return ret;
-@@ -1266,6 +1352,7 @@ int ath11k_nss_vdev_down(struct ath11k_vif *arvif)
+@@ -1254,6 +1340,7 @@ int ath11k_nss_vdev_down(struct ath11k_v
  {
  	struct nss_wifi_vdev_msg *vdev_msg = NULL;
  	struct ath11k *ar = arvif->ar;
@@ -231,7 +230,7 @@ index e6bac3c..c09d42f 100644
  	nss_tx_status_t status;
  	int ret = 0;
  
-@@ -1293,11 +1380,365 @@ int ath11k_nss_vdev_down(struct ath11k_vif *arvif)
+@@ -1281,11 +1368,365 @@ int ath11k_nss_vdev_down(struct ath11k_v
  	}
  
  	ath11k_dbg(ar->ab, ATH11K_DBG_NSS, "nss vdev down tx msg success\n");
@@ -597,7 +596,7 @@ index e6bac3c..c09d42f 100644
  /*----------------------------Peer Setup/Config -----------------------------*/
  
  int ath11k_nss_set_peer_sec_type(struct ath11k *ar,
-@@ -1391,22 +1832,22 @@ free:
+@@ -1379,22 +1820,22 @@ free:
  	return status;
  }
  
@@ -627,7 +626,7 @@ index e6bac3c..c09d42f 100644
  					sta->addr);
  		goto exit;
  	}
-@@ -1478,13 +1919,13 @@ void ath11k_nss_update_sta_rxrate(struct hal_rx_mon_ppdu_info *ppdu_info,
+@@ -1466,13 +1907,13 @@ void ath11k_nss_update_sta_rxrate(struct
  				  struct ath11k_peer *peer,
  				  struct hal_rx_user_status *user_stats)
  {
@@ -643,7 +642,7 @@ index e6bac3c..c09d42f 100644
  	struct ath11k_base *ab = ar->ab;
  
  	if (!ab->nss.enabled)
-@@ -1785,8 +2226,8 @@ int ath11k_nss_add_wds_peer(struct ath11k *ar, struct ath11k_peer *peer,
+@@ -1776,8 +2217,8 @@ int ath11k_nss_add_wds_peer(struct ath11
  	}
  
  	ath11k_dbg(ab, ATH11K_DBG_NSS_WDS,
@@ -654,7 +653,7 @@ index e6bac3c..c09d42f 100644
  
  msg_free:
  	kfree(wlmsg);
-@@ -1831,8 +2272,8 @@ int ath11k_nss_update_wds_peer(struct ath11k *ar, struct ath11k_peer *peer,
+@@ -1822,8 +2263,8 @@ int ath11k_nss_update_wds_peer(struct at
  	}
  
  	ath11k_dbg(ab, ATH11K_DBG_NSS_WDS,
@@ -665,8 +664,6 @@ index e6bac3c..c09d42f 100644
  
  msg_free:
  	kfree(wlmsg);
-diff --git a/drivers/net/wireless/ath/ath11k/nss.h b/drivers/net/wireless/ath/ath11k/nss.h
-index 51dcde8..1ebc2fe 100644
 --- a/drivers/net/wireless/ath/ath11k/nss.h
 +++ b/drivers/net/wireless/ath/ath11k/nss.h
 @@ -151,6 +151,7 @@ enum ath11k_nss_peer_sec_type {
@@ -694,7 +691,7 @@ index 51dcde8..1ebc2fe 100644
  	bool created;
  };
  
-@@ -220,11 +231,21 @@ int ath11k_nss_map_wds_peer(struct ath11k *ar, struct ath11k_peer *peer,
+@@ -220,11 +231,21 @@ int ath11k_nss_map_wds_peer(struct ath11
  			    u8 *dest_mac, enum ath11k_ast_entry_type type);
  int ath11k_nss_del_wds_peer(struct ath11k *ar, struct ath11k_peer *peer,
  			    u8 *dest_mac);
@@ -719,7 +716,7 @@ index 51dcde8..1ebc2fe 100644
  void ath11k_nss_update_sta_rxrate(struct hal_rx_mon_ppdu_info *ppdu_info,
  				  struct ath11k_peer *peer,
  				  struct hal_rx_user_status *user_stats);
-@@ -257,9 +278,9 @@ static inline void ath11k_nss_vdev_delete(struct ath11k_vif *arvif)
+@@ -257,9 +278,9 @@ static inline void ath11k_nss_vdev_delet
  {
  }
  
@@ -732,7 +729,7 @@ index 51dcde8..1ebc2fe 100644
  {
  	return;
  }
-@@ -316,6 +337,43 @@ static inline int ath11k_nss_peer_create(struct ath11k *ar, struct ath11k_peer *
+@@ -316,6 +337,43 @@ static inline int ath11k_nss_peer_create
  	return 0;
  }
  
@@ -776,7 +773,7 @@ index 51dcde8..1ebc2fe 100644
  static inline void ath11k_nss_peer_stats_enable(struct ath11k *ar)
  {
  	return;
-@@ -337,6 +395,11 @@ static inline int ath11k_nss_setup(struct ath11k_base *ab)
+@@ -337,6 +395,11 @@ static inline int ath11k_nss_setup(struc
  	return 0;
  }
  

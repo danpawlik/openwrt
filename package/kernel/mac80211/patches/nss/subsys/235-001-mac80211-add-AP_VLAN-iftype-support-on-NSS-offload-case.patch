@@ -19,11 +19,9 @@ Signed-off-by: Sathishkumar Muruganandam <murugana@codeaurora.org>
  net/mac80211/util.c       |  6 ++----
  7 files changed, 44 insertions(+), 17 deletions(-)
 
-diff --git a/include/net/mac80211.h b/include/net/mac80211.h
-index 99668e5..b9c35f0 100644
 --- a/include/net/mac80211.h
 +++ b/include/net/mac80211.h
-@@ -5398,6 +5398,17 @@ void ieee80211_sta_pspoll(struct ieee80211_sta *sta);
+@@ -5393,6 +5393,17 @@ void ieee80211_sta_pspoll(struct ieee802
   */
  void ieee80211_sta_uapsd_trigger(struct ieee80211_sta *sta, u8 tid);
  
@@ -41,11 +39,9 @@ index 99668e5..b9c35f0 100644
  /*
   * The TX headroom reserved by mac80211 for its own tx_status functions.
   * This is enough for the radiotap header.
-diff --git a/net/mac80211/cfg.c b/net/mac80211/cfg.c
-index 6a753db..1d2f932 100644
 --- a/net/mac80211/cfg.c
 +++ b/net/mac80211/cfg.c
-@@ -2467,7 +2467,13 @@ static int ieee80211_change_station(struct wiphy *wiphy,
+@@ -2463,7 +2463,13 @@ static int ieee80211_change_station(stru
  
  			rcu_assign_pointer(vlansdata->u.vlan.sta, sta);
  			__ieee80211_check_fast_rx_iface(vlansdata);
@@ -60,11 +56,9 @@ index 6a753db..1d2f932 100644
  		}
  
  		if (sta->sdata->vif.type == NL80211_IFTYPE_AP_VLAN &&
-diff --git a/net/mac80211/driver-ops.c b/net/mac80211/driver-ops.c
-index 9975812..83a1c8d 100644
 --- a/net/mac80211/driver-ops.c
 +++ b/net/mac80211/driver-ops.c
-@@ -62,11 +62,10 @@ int drv_add_interface(struct ieee80211_local *local,
+@@ -62,11 +62,10 @@ int drv_add_interface(struct ieee80211_l
  	might_sleep();
  	lockdep_assert_wiphy(local->hw.wiphy);
  
@@ -78,26 +72,9 @@ index 9975812..83a1c8d 100644
  		return -EINVAL;
  
  	trace_drv_add_interface(local, sdata);
-diff --git a/net/mac80211/driver-ops.h b/net/mac80211/driver-ops.h
-index ead0252..2959fce 100644
---- a/net/mac80211/driver-ops.h
-+++ b/net/mac80211/driver-ops.h
-@@ -623,7 +623,9 @@ static inline void drv_sta_rate_tbl_update(struct ieee80211_local *local,
- 					   struct ieee80211_sub_if_data *sdata,
- 					   struct ieee80211_sta *sta)
- {
--	sdata = get_bss_sdata(sdata);
-+	if (!ieee80211_hw_check(&local->hw, SUPPORTS_NSS_OFFLOAD))
-+		sdata = get_bss_sdata(sdata);
-+
- 	if (!check_sdata_in_driver(sdata))
- 		return;
- 
-diff --git a/net/mac80211/iface.c b/net/mac80211/iface.c
-index b722b1d..55739cb 100644
 --- a/net/mac80211/iface.c
 +++ b/net/mac80211/iface.c
-@@ -712,6 +712,9 @@ static void ieee80211_do_stop(struct ieee80211_sub_if_data *sdata, bool going_do
+@@ -712,6 +712,9 @@ static void ieee80211_do_stop(struct iee
  
  	switch (sdata->vif.type) {
  	case NL80211_IFTYPE_AP_VLAN:
@@ -107,7 +84,7 @@ index b722b1d..55739cb 100644
  		break;
  	case NL80211_IFTYPE_MONITOR:
  		if (local->virt_monitors == 0)
-@@ -1028,6 +1031,7 @@ static bool ieee80211_iftype_supports_hdr_offload(enum nl80211_iftype iftype)
+@@ -1028,6 +1031,7 @@ static bool ieee80211_iftype_supports_hd
  	switch (iftype) {
  	/* P2P GO and client are mapped to AP/STATION types */
  	case NL80211_IFTYPE_AP:
@@ -115,7 +92,7 @@ index b722b1d..55739cb 100644
  	case NL80211_IFTYPE_STATION:
  		return true;
  	default:
-@@ -1082,7 +1086,8 @@ static void ieee80211_set_vif_encap_ops(struct ieee80211_sub_if_data *sdata)
+@@ -1082,7 +1086,8 @@ static void ieee80211_set_vif_encap_ops(
  	struct ieee80211_sub_if_data *bss = sdata;
  	bool enabled;
  
@@ -125,7 +102,7 @@ index b722b1d..55739cb 100644
  		if (!sdata->bss)
  			return;
  
-@@ -1430,6 +1435,14 @@ int ieee80211_do_open(struct wireless_dev *wdev, bool coming_up)
+@@ -1430,6 +1435,14 @@ int ieee80211_do_open(struct wireless_de
  			}
  
  			netif_carrier_on(dev);
@@ -140,25 +117,9 @@ index b722b1d..55739cb 100644
  			ieee80211_set_vif_encap_ops(sdata);
  		} else {
  			netif_carrier_off(dev);
-diff --git a/net/mac80211/mlme.c b/net/mac80211/mlme.c
-index 8854e47..9f4a663 100644
---- a/net/mac80211/mlme.c
-+++ b/net/mac80211/mlme.c
-@@ -6454,7 +6454,8 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
- 	 * If we're using 4-addr mode, let the AP know that we're
- 	 * doing so, so that it can create the STA VLAN on its side
- 	 */
--	if (ifmgd->use_4addr)
-+	if (ifmgd->use_4addr &&
-+	    (!ieee80211_hw_check(&local->hw, SUPPORTS_NSS_OFFLOAD)))
- 		ieee80211_send_4addr_nullfunc(local, sdata);
- 
- 	/*
-diff --git a/net/mac80211/rx.c b/net/mac80211/rx.c
-index a171bee..47b2ba0 100644
 --- a/net/mac80211/rx.c
 +++ b/net/mac80211/rx.c
-@@ -1700,6 +1700,12 @@ void ieee80211_sta_uapsd_trigger(struct ieee80211_sta *pubsta, u8 tid)
+@@ -1700,6 +1700,12 @@ void ieee80211_sta_uapsd_trigger(struct
  }
  EXPORT_SYMBOL(ieee80211_sta_uapsd_trigger);
  
@@ -171,11 +132,9 @@ index a171bee..47b2ba0 100644
  static ieee80211_rx_result debug_noinline
  ieee80211_rx_h_uapsd_and_pspoll(struct ieee80211_rx_data *rx)
  {
-diff --git a/net/mac80211/tx.c b/net/mac80211/tx.c
-index 901b335..3de7dfb 100644
 --- a/net/mac80211/tx.c
 +++ b/net/mac80211/tx.c
-@@ -4348,8 +4348,11 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
+@@ -4346,8 +4346,11 @@ void __ieee80211_subif_start_xmit(struct
  		sta = NULL;
  
  	if (sdata->vif.type == NL80211_IFTYPE_AP_VLAN) {
@@ -189,7 +148,7 @@ index 901b335..3de7dfb 100644
  		if (ap_sdata->vif.offload_flags & IEEE80211_OFFLOAD_ENCAP_ENABLED &&
  		    !is_multicast_ether_addr(skb->data)) {
  			if (sta)
-@@ -4743,7 +4746,8 @@ static void ieee80211_8023_xmit(struct ieee80211_sub_if_data *sdata,
+@@ -4741,7 +4744,8 @@ static void ieee80211_8023_xmit(struct i
  
  	info->hw_queue = sdata->vif.hw_queue[queue];
  
@@ -199,11 +158,9 @@ index 901b335..3de7dfb 100644
  		sdata = container_of(sdata->bss,
  				     struct ieee80211_sub_if_data, u.ap);
  
-diff --git a/net/mac80211/util.c b/net/mac80211/util.c
-index dc2912d..515548e 100644
 --- a/net/mac80211/util.c
 +++ b/net/mac80211/util.c
-@@ -1724,6 +1724,9 @@ static void ieee80211_assign_chanctx(struct ieee80211_local *local,
+@@ -1724,6 +1724,9 @@ static void ieee80211_assign_chanctx(str
  
  	lockdep_assert_wiphy(local->hw.wiphy);
  
@@ -213,7 +170,7 @@ index dc2912d..515548e 100644
  	conf = rcu_dereference_protected(link->conf->chanctx_conf,
  					 lockdep_is_held(&local->hw.wiphy->mtx));
  	if (conf) {
-@@ -1944,7 +1947,8 @@ int ieee80211_reconfig(struct ieee80211_local *local)
+@@ -1944,7 +1947,8 @@ int ieee80211_reconfig(struct ieee80211_
  		if (sdata->vif.type == NL80211_IFTYPE_MONITOR &&
  		    !ieee80211_hw_check(&local->hw, NO_VIRTUAL_MONITOR))
  			continue;
@@ -223,7 +180,7 @@ index dc2912d..515548e 100644
  		    ieee80211_sdata_running(sdata)) {
  			res = drv_add_interface(local, sdata);
  			if (WARN_ON(res))
-@@ -1961,7 +1965,8 @@ int ieee80211_reconfig(struct ieee80211_local *local)
+@@ -1961,7 +1965,8 @@ int ieee80211_reconfig(struct ieee80211_
  			if (sdata->vif.type == NL80211_IFTYPE_MONITOR &&
  			    !ieee80211_hw_check(&local->hw, NO_VIRTUAL_MONITOR))
  				continue;
@@ -233,3 +190,28 @@ index dc2912d..515548e 100644
  			    ieee80211_sdata_running(sdata))
  				drv_remove_interface(local, sdata);
  		}
+--- a/net/mac80211/mlme.c
++++ b/net/mac80211/mlme.c
+@@ -6444,7 +6444,8 @@ static bool ieee80211_assoc_success(stru
+ 	 * If we're using 4-addr mode, let the AP know that we're
+ 	 * doing so, so that it can create the STA VLAN on its side
+ 	 */
+-	if (ifmgd->use_4addr)
++	if (ifmgd->use_4addr &&
++	    (!ieee80211_hw_check(&local->hw, SUPPORTS_NSS_OFFLOAD)))
+ 		ieee80211_send_4addr_nullfunc(local, sdata);
+ 
+ 	/*
+--- a/net/mac80211/driver-ops.h
++++ b/net/mac80211/driver-ops.h
+@@ -623,7 +623,9 @@ static inline void drv_sta_rate_tbl_upda
+ 					   struct ieee80211_sub_if_data *sdata,
+ 					   struct ieee80211_sta *sta)
+ {
+-	sdata = get_bss_sdata(sdata);
++	if (!ieee80211_hw_check(&local->hw, SUPPORTS_NSS_OFFLOAD))
++		sdata = get_bss_sdata(sdata);
++
+ 	if (!check_sdata_in_driver(sdata))
+ 		return;
+ 

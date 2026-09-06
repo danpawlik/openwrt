@@ -11,11 +11,9 @@ Signed-off-by: Venkateswara Naralasetty <quic_vnaralas@quicinc.com>
  drivers/net/wireless/ath/ath11k/dp_tx.c | 114 ++++++++++++++++----------------
  1 file changed, 58 insertions(+), 56 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/dp_tx.c b/drivers/net/wireless/ath/ath11k/dp_tx.c
-index 576f2fe..cf5fc49 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
-@@ -406,6 +406,7 @@ ath11k_dp_tx_htt_tx_complete_buf(struct ath11k_base *ab,
+@@ -406,6 +406,7 @@ ath11k_dp_tx_htt_tx_complete_buf(struct
  	struct ath11k_skb_cb *skb_cb;
  	struct ath11k *ar;
  	struct ath11k_peer *peer;
@@ -66,7 +64,7 @@ index 576f2fe..cf5fc49 100644
  {
  	struct ieee80211_tx_status status = {};
  	struct ieee80211_rate_status status_rate = {};
-@@ -660,8 +693,11 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -660,8 +693,11 @@ static void ath11k_dp_tx_complete_msdu(s
  	struct ath11k_peer *peer;
  	struct ath11k_sta *arsta;
  	struct rate_info rate;
@@ -79,15 +77,15 @@ index 576f2fe..cf5fc49 100644
  		/* Must not happen */
  		return;
  	}
-@@ -670,12 +706,15 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -670,11 +706,14 @@ static void ath11k_dp_tx_complete_msdu(s
  
  	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
  
+-	/* Free skb here if stats is disabled */
 +	rel_status = FIELD_GET(HAL_WBM_RELEASE_INFO0_TQM_RELEASE_REASON,
 +			       tx_status->info0);
 +
- 	flags = skb_cb->flags;
- 	/* Free skb here if stats is disabled */
++ 	/* Free skb here if stats is disabled */
  	if (ab->stats_disable && !(flags & ATH11K_SKB_TX_STATUS)) {
  		if (msdu->destructor) {
  			msdu->wifi_acked_valid = 1;
@@ -96,7 +94,7 @@ index 576f2fe..cf5fc49 100644
  		}
  		if (skb_has_frag_list(msdu)) {
  			kfree_skb_list(skb_shinfo(msdu)->frag_list);
-@@ -685,6 +724,8 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -684,6 +723,8 @@ static void ath11k_dp_tx_complete_msdu(s
  		return;
  	}
  
@@ -105,7 +103,7 @@ index 576f2fe..cf5fc49 100644
  	if (unlikely(!rcu_access_pointer(ab->pdevs_active[ar->pdev_idx]))) {
  		ieee80211_free_txskb(ar->hw, msdu);
  		return;
-@@ -701,10 +742,10 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -700,10 +741,10 @@ static void ath11k_dp_tx_complete_msdu(s
  	/* skip tx rate update from ieee80211_status*/
  	info->status.rates[0].idx = -1;
  
@@ -118,7 +116,7 @@ index 576f2fe..cf5fc49 100644
  
  		if (!test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
  			      ab->wmi_ab.svc_map))
-@@ -713,40 +754,40 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -712,40 +753,40 @@ static void ath11k_dp_tx_complete_msdu(s
  		info->status.flags |= IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
  	}
  
@@ -169,7 +167,7 @@ index 576f2fe..cf5fc49 100644
  		spin_unlock_bh(&ab->base_lock);
  		ieee80211_free_txskb(ar->hw, msdu);
  		return;
-@@ -768,37 +809,6 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -767,37 +808,6 @@ static void ath11k_dp_tx_complete_msdu(s
  	ieee80211_tx_status_ext(ar->hw, &status);
  }
  
@@ -207,7 +205,7 @@ index 576f2fe..cf5fc49 100644
  static inline bool ath11k_dp_tx_completion_valid(struct hal_wbm_release_ring *desc)
  {
  	struct htt_tx_wbm_completion *status_desc;
-@@ -822,9 +832,9 @@ void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id)
+@@ -821,9 +831,9 @@ void ath11k_dp_tx_completion_handler(str
  	int hal_ring_id = dp->tx_ring[ring_id].tcl_comp_ring.ring_id, count = 0, i = 0;
  	struct hal_srng *status_ring = &ab->hal.srng_list[hal_ring_id];
  	struct sk_buff *msdu;
@@ -218,7 +216,7 @@ index 576f2fe..cf5fc49 100644
  	struct hal_wbm_release_ring *desc;
  	u32 msdu_id, desc_id;
  	u8 mac_id;
-@@ -865,14 +875,16 @@ void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id)
+@@ -864,14 +874,16 @@ void ath11k_dp_tx_completion_handler(str
  
  	while (count--) {
  		tx_status = &tx_ring->tx_status[i++];
@@ -237,7 +235,7 @@ index 576f2fe..cf5fc49 100644
  			ath11k_dp_tx_process_htt_tx_complete(ab,
  							     (void *)tx_status,
  							     mac_id, msdu_id,
-@@ -896,7 +908,7 @@ void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id)
+@@ -895,7 +907,7 @@ void ath11k_dp_tx_completion_handler(str
  		if (atomic_dec_and_test(&ar->dp.num_tx_pending))
  			wake_up(&ar->dp.tx_empty_waitq);
  

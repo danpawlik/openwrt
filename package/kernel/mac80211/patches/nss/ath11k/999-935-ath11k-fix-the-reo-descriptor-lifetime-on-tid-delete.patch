@@ -32,9 +32,12 @@ owns the descriptor after the copy, which is what the rest of the
 function already assumes - and wants a device pass.
 
 Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
+---
+ drivers/net/wireless/ath/ath11k/dp_rx.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
-index 18e9f45..d2142c0 100644
+index ab1e5a0..666903e 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_rx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
 @@ -746,9 +746,9 @@ void ath11k_dp_reo_cmd_list_cleanup(struct ath11k_base *ab)

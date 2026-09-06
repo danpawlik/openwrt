@@ -13,11 +13,9 @@ Signed-off-by: Miles Hu <milehu@codeaurora.org>
  drivers/net/wireless/ath/ath11k/hal_rx.h      |  8 ++++++++
  3 files changed, 25 insertions(+), 7 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/debugfs_sta.c b/drivers/net/wireless/ath/ath11k/debugfs_sta.c
-index a2014e3..c30c89e 100644
 --- a/drivers/net/wireless/ath/ath11k/debugfs_sta.c
 +++ b/drivers/net/wireless/ath/ath11k/debugfs_sta.c
-@@ -527,13 +527,6 @@ static ssize_t ath11k_dbg_sta_dump_rx_stats(struct file *file,
+@@ -527,13 +527,6 @@ static ssize_t ath11k_dbg_sta_dump_rx_st
  				rx_stats->byte_stats.rx_rate[i],
  				(i + 1) % (he_rates_avail ? 12 : 8) ? "\t" : "\n");
  
@@ -31,11 +29,9 @@ index a2014e3..c30c89e 100644
  	len += scnprintf(buf + len, size - len, "\n");
  
  	spin_unlock_bh(&ar->ab->base_lock);
-diff --git a/drivers/net/wireless/ath/ath11k/hal_rx.c b/drivers/net/wireless/ath/ath11k/hal_rx.c
-index 4462836..829943e 100644
 --- a/drivers/net/wireless/ath/ath11k/hal_rx.c
 +++ b/drivers/net/wireless/ath/ath11k/hal_rx.c
-@@ -1480,6 +1480,7 @@ ath11k_hal_rx_parse_mon_status_tlv(struct ath11k_base *ab,
+@@ -1480,6 +1480,7 @@ ath11k_hal_rx_parse_mon_status_tlv(struc
  				       ab->wmi_ab.svc_map);
  		struct hal_rx_phyrx_rssi_legacy_info *rssi =
  			(struct hal_rx_phyrx_rssi_legacy_info *)tlv_data;
@@ -43,7 +39,7 @@ index 4462836..829943e 100644
  
  		/* TODO: Please note that the combined rssi will not be accurate
  		 * in MU case. Rssi in MU needs to be retrieved from
-@@ -1489,6 +1490,22 @@ ath11k_hal_rx_parse_mon_status_tlv(struct ath11k_base *ab,
+@@ -1489,6 +1490,22 @@ ath11k_hal_rx_parse_mon_status_tlv(struc
  			FIELD_GET(HAL_RX_PHYRX_RSSI_LEGACY_INFO_INFO0_RSSI_COMB,
  				  __le32_to_cpu(rssi->info0));
  
@@ -66,8 +62,6 @@ index 4462836..829943e 100644
  		if (db2dbm) {
  			for (i = 0; i < ARRAY_SIZE(rssi->preamble); i++) {
  				ppdu_info->rssi_chain_pri20[i] =
-diff --git a/drivers/net/wireless/ath/ath11k/hal_rx.h b/drivers/net/wireless/ath/ath11k/hal_rx.h
-index 75ed4fc..57ee39b 100644
 --- a/drivers/net/wireless/ath/ath11k/hal_rx.h
 +++ b/drivers/net/wireless/ath/ath11k/hal_rx.h
 @@ -415,6 +415,15 @@ struct hal_rx_he_sig_b2_ofdma_info {

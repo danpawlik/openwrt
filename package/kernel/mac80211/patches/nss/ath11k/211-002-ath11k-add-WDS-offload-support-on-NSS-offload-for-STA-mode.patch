@@ -24,8 +24,6 @@ Signed-off-by: Sathishkumar Muruganandam <murugana@codeaurora.org>
  drivers/net/wireless/ath/ath11k/wmi.h   |  33 +++
  8 files changed, 658 insertions(+), 14 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
-index aab9814..13db2ed 100644
 --- a/drivers/net/wireless/ath/ath11k/core.h
 +++ b/drivers/net/wireless/ath/ath11k/core.h
 @@ -698,6 +698,7 @@ struct ath11k {
@@ -46,8 +44,6 @@ index aab9814..13db2ed 100644
  	/* must be last */
  	u8 drv_priv[] __aligned(sizeof(void *));
  };
-diff --git a/drivers/net/wireless/ath/ath11k/dp.h b/drivers/net/wireless/ath/ath11k/dp.h
-index 2fb3f72..73908db 100644
 --- a/drivers/net/wireless/ath/ath11k/dp.h
 +++ b/drivers/net/wireless/ath/ath11k/dp.h
 @@ -1106,13 +1106,16 @@ struct htt_t2h_peer_map_event {
@@ -69,11 +65,9 @@ index 2fb3f72..73908db 100644
  } __packed;
  
  struct htt_resp_msg {
-diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
-index 94e94a4..54f30f3 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_rx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
-@@ -1857,6 +1857,8 @@ void ath11k_dp_htt_htc_t2h_msg_handler(struct ath11k_base *ab,
+@@ -1848,6 +1848,8 @@ void ath11k_dp_htt_htc_t2h_msg_handler(s
  	u16 peer_mac_h16;
  	u16 ast_hash;
  	u16 hw_peer_id;
@@ -82,7 +76,7 @@ index 94e94a4..54f30f3 100644
  
  	ath11k_dbg(ab, ATH11K_DBG_DP_HTT, "dp_htt rx msg type :0x%0x\n", type);
  
-@@ -1892,15 +1894,29 @@ void ath11k_dp_htt_htc_t2h_msg_handler(struct ath11k_base *ab,
+@@ -1883,15 +1885,29 @@ void ath11k_dp_htt_htc_t2h_msg_handler(s
  				     resp->peer_map_ev.info2);
  		hw_peer_id = FIELD_GET(HTT_T2H_PEER_MAP_INFO1_HW_PEER_ID,
  				       resp->peer_map_ev.info1);
@@ -115,11 +109,9 @@ index 94e94a4..54f30f3 100644
  	case HTT_T2H_MSG_TYPE_PPDU_STATS_IND:
  		ath11k_htt_pull_ppdu_stats(ab, skb);
  		break;
-diff --git a/drivers/net/wireless/ath/ath11k/dp_tx.c b/drivers/net/wireless/ath/ath11k/dp_tx.c
-index 6c3d791..104f4ff 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
-@@ -500,7 +500,7 @@ ath11k_dp_tx_process_htt_tx_complete(struct ath11k_base *ab,
+@@ -500,7 +500,7 @@ ath11k_dp_tx_process_htt_tx_complete(str
  		break;
  	case HAL_WBM_REL_HTT_TX_COMP_STATUS_MEC_NOTIFY:
  		/* This event is to be handled only when the driver decides to
@@ -128,11 +120,9 @@ index 6c3d791..104f4ff 100644
  		 */
  		break;
  	default:
-diff --git a/drivers/net/wireless/ath/ath11k/peer.c b/drivers/net/wireless/ath/ath11k/peer.c
-index 620f154..9cea5b8 100644
 --- a/drivers/net/wireless/ath/ath11k/peer.c
 +++ b/drivers/net/wireless/ath/ath11k/peer.c
-@@ -94,6 +94,287 @@ struct ath11k_peer *ath11k_peer_find_by_vdev_id(struct ath11k_base *ab,
+@@ -108,6 +108,287 @@ struct ath11k_peer *ath11k_peer_find_by_
  	return NULL;
  }
  
@@ -420,7 +410,7 @@ index 620f154..9cea5b8 100644
  void ath11k_peer_unmap_event(struct ath11k_base *ab, u16 peer_id)
  {
  	struct ath11k_peer *peer;
-@@ -118,11 +399,67 @@ exit:
+@@ -132,11 +413,67 @@ exit:
  	spin_unlock_bh(&ab->base_lock);
  }
  
@@ -488,7 +478,7 @@ index 620f154..9cea5b8 100644
  	spin_lock_bh(&ab->base_lock);
  	peer = ath11k_peer_find(ab, vdev_id, mac_addr);
  	if (!peer) {
-@@ -137,8 +474,8 @@ void ath11k_peer_map_event(struct ath11k_base *ab, u8 vdev_id, u16 peer_id,
+@@ -151,8 +488,8 @@ void ath11k_peer_map_event(struct ath11k
  		ether_addr_copy(peer->addr, mac_addr);
  		list_add(&peer->list, &ab->peers);
  		wake_up(&ab->peer_mapping_wq);
@@ -499,7 +489,7 @@ index 620f154..9cea5b8 100644
  	}
  
  	ath11k_dbg(ab, ATH11K_DBG_DP_HTT, "peer map vdev %d peer %pM id %d\n",
-@@ -146,6 +483,69 @@ void ath11k_peer_map_event(struct ath11k_base *ab, u8 vdev_id, u16 peer_id,
+@@ -160,6 +497,69 @@ void ath11k_peer_map_event(struct ath11k
  
  exit:
  	spin_unlock_bh(&ab->base_lock);
@@ -569,7 +559,7 @@ index 620f154..9cea5b8 100644
  }
  
  static int ath11k_wait_for_peer_common(struct ath11k_base *ab, int vdev_id,
-@@ -242,20 +642,34 @@ err_clean:
+@@ -256,20 +656,34 @@ err_clean:
  
  void ath11k_peer_cleanup(struct ath11k *ar, u32 vdev_id)
  {
@@ -606,7 +596,7 @@ index 620f154..9cea5b8 100644
  		ath11k_peer_rhash_delete(ab, peer);
  		list_del(&peer->list);
  		kfree(peer);
-@@ -302,7 +716,7 @@ static int __ath11k_peer_delete(struct ath11k *ar, u32 vdev_id, const u8 *addr)
+@@ -316,7 +730,7 @@ static int __ath11k_peer_delete(struct a
  	lockdep_assert_held(&ar->conf_mutex);
  
  	reinit_completion(&ar->peer_delete_done);
@@ -615,7 +605,7 @@ index 620f154..9cea5b8 100644
  
  	mutex_lock(&ab->tbl_mtx_lock);
  	spin_lock_bh(&ab->base_lock);
-@@ -377,6 +791,7 @@ int ath11k_peer_create(struct ath11k *ar, struct ath11k_vif *arvif,
+@@ -391,6 +805,7 @@ int ath11k_peer_create(struct ath11k *ar
  		       struct ieee80211_sta *sta, struct peer_create_params *param)
  {
  	struct ath11k_peer *peer;
@@ -623,7 +613,7 @@ index 620f154..9cea5b8 100644
  	struct ath11k_sta *arsta;
  	int ret, fbret;
  
-@@ -452,6 +867,13 @@ int ath11k_peer_create(struct ath11k *ar, struct ath11k_vif *arvif,
+@@ -466,6 +881,13 @@ int ath11k_peer_create(struct ath11k *ar
  	peer->sec_type_grp = HAL_ENCRYPT_TYPE_OPEN;
  	peer->vif = arvif->vif;
  
@@ -637,8 +627,6 @@ index 620f154..9cea5b8 100644
  	if (sta) {
  		arsta = ath11k_sta_to_arsta(sta);
  		arsta->tcl_metadata |= FIELD_PREP(HTT_TCL_META_DATA_TYPE, 0) |
-diff --git a/drivers/net/wireless/ath/ath11k/peer.h b/drivers/net/wireless/ath/ath11k/peer.h
-index bb60f9c..51f45ac 100644
 --- a/drivers/net/wireless/ath/ath11k/peer.h
 +++ b/drivers/net/wireless/ath/ath11k/peer.h
 @@ -18,6 +18,47 @@ struct ppdu_user_delayba {
@@ -714,7 +702,7 @@ index bb60f9c..51f45ac 100644
  struct ath11k_peer *ath11k_peer_find(struct ath11k_base *ab, int vdev_id,
  				     const u8 *addr);
  struct ath11k_peer *ath11k_peer_find_by_addr(struct ath11k_base *ab,
-@@ -72,4 +122,71 @@ struct ath11k_peer *ath11k_peer_find_by_vdev_id(struct ath11k_base *ab,
+@@ -73,4 +123,71 @@ struct ath11k_peer *ath11k_peer_find_by_
  int ath11k_peer_rhash_tbl_init(struct ath11k_base *ab);
  void ath11k_peer_rhash_tbl_destroy(struct ath11k_base *ab);
  int ath11k_peer_rhash_delete(struct ath11k_base *ab, struct ath11k_peer *peer);
@@ -786,11 +774,9 @@ index bb60f9c..51f45ac 100644
 +}
 +#endif /* CPTCFG_ATH11K_NSS_SUPPORT */
  #endif /* _PEER_H_ */
-diff --git a/drivers/net/wireless/ath/ath11k/wmi.c b/drivers/net/wireless/ath/ath11k/wmi.c
-index 314705f..bf2b1ff 100644
 --- a/drivers/net/wireless/ath/ath11k/wmi.c
 +++ b/drivers/net/wireless/ath/ath11k/wmi.c
-@@ -159,6 +159,8 @@ static const struct wmi_tlv_policy wmi_tlv_policies[] = {
+@@ -161,6 +161,8 @@ static const struct wmi_tlv_policy wmi_t
  		.min_len = sizeof(struct ath11k_wmi_p2p_noa_info) },
  	[WMI_TAG_P2P_NOA_EVENT] = {
  		.min_len = sizeof(struct wmi_p2p_noa_event) },
@@ -799,7 +785,7 @@ index 314705f..bf2b1ff 100644
  };
  
  #define PRIMAP(_hw_mode_) \
-@@ -1129,6 +1131,51 @@ int ath11k_wmi_send_peer_delete_cmd(struct ath11k *ar,
+@@ -1131,6 +1133,51 @@ int ath11k_wmi_send_peer_delete_cmd(stru
  	return ret;
  }
  
@@ -851,7 +837,7 @@ index 314705f..bf2b1ff 100644
  int ath11k_wmi_send_pdev_set_regdomain(struct ath11k *ar,
  				       struct pdev_set_regdomain_params *param)
  {
-@@ -6488,6 +6535,36 @@ static int ath11k_pull_peer_assoc_conf_ev(struct ath11k_base *ab, struct sk_buff
+@@ -6491,6 +6538,36 @@ static int ath11k_pull_peer_assoc_conf_e
  	return 0;
  }
  
@@ -888,7 +874,7 @@ index 314705f..bf2b1ff 100644
  static void ath11k_wmi_pull_pdev_stats_base(const struct wmi_pdev_stats_base *src,
  					    struct ath11k_fw_stats_pdev *dst)
  {
-@@ -7312,6 +7389,7 @@ static int ath11k_wmi_tlv_rdy_parse(struct ath11k_base *ab, u16 tag, u16 len,
+@@ -7315,6 +7392,7 @@ static int ath11k_wmi_tlv_rdy_parse(stru
  
  		ether_addr_copy(ab->mac_addr,
  				fixed_param.ready_event_min.mac_addr.addr);
@@ -896,7 +882,7 @@ index 314705f..bf2b1ff 100644
  		ab->pktlog_defs_checksum = fixed_param.pktlog_defs_checksum;
  		break;
  	case WMI_TAG_ARRAY_FIXED_STRUCT:
-@@ -8853,6 +8931,22 @@ out:
+@@ -8924,6 +9002,22 @@ exit:
  	kfree(tb);
  }
  
@@ -919,7 +905,7 @@ index 314705f..bf2b1ff 100644
  static void ath11k_wmi_tlv_op_rx(struct ath11k_base *ab, struct sk_buff *skb)
  {
  	struct wmi_cmd_hdr *cmd_hdr;
-@@ -8983,6 +9077,9 @@ static void ath11k_wmi_tlv_op_rx(struct ath11k_base *ab, struct sk_buff *skb)
+@@ -9057,6 +9151,9 @@ static void ath11k_wmi_tlv_op_rx(struct
  	case WMI_P2P_NOA_EVENTID:
  		ath11k_wmi_p2p_noa_event(ab, skb);
  		break;
@@ -929,11 +915,9 @@ index 314705f..bf2b1ff 100644
  	default:
  		ath11k_dbg(ab, ATH11K_DBG_WMI, "unsupported event id 0x%x\n", id);
  		break;
-diff --git a/drivers/net/wireless/ath/ath11k/wmi.h b/drivers/net/wireless/ath/ath11k/wmi.h
-index 6b777f0..7284b64 100644
 --- a/drivers/net/wireless/ath/ath11k/wmi.h
 +++ b/drivers/net/wireless/ath/ath11k/wmi.h
-@@ -3026,6 +3026,21 @@ struct wmi_peer_delete_cmd {
+@@ -3028,6 +3028,21 @@ struct wmi_peer_delete_cmd {
  	struct wmi_mac_addr peer_macaddr;
  } __packed;
  
@@ -955,7 +939,7 @@ index 6b777f0..7284b64 100644
  struct wmi_peer_reorder_queue_setup_cmd {
  	u32 tlv_header;
  	u32 vdev_id;
-@@ -4642,6 +4657,21 @@ struct wmi_probe_resp_tx_status_event {
+@@ -4644,6 +4659,21 @@ struct wmi_probe_resp_tx_status_event {
  	u32 tx_status;
  } __packed;
  
@@ -977,7 +961,7 @@ index 6b777f0..7284b64 100644
  /*
   * PDEV statistics
   */
-@@ -6436,6 +6466,9 @@ int ath11k_wmi_set_sta_ps_param(struct ath11k *ar, u32 vdev_id,
+@@ -6448,6 +6478,9 @@ int ath11k_wmi_set_sta_ps_param(struct a
  int ath11k_wmi_force_fw_hang_cmd(struct ath11k *ar, u32 type, u32 delay_time_ms);
  int ath11k_wmi_send_peer_delete_cmd(struct ath11k *ar,
  				    const u8 *peer_addr, u8 vdev_id);

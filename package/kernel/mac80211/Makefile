@@ -10,13 +10,13 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=mac80211
 
-PKG_VERSION:=6.18.39
-PKG_RELEASE:=3
+PKG_VERSION:=6.18.26
+PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-only
 PKG_LICENSE_FILES:=COPYING
 
 PKG_SOURCE_URL:=https://github.com/openwrt/backports/releases/download/backports-v$(PKG_VERSION)
-PKG_HASH:=8951c1e270d7c311432377bd50951cd1d5dee2b5fedf33d30db41aa8e428aeb0
+PKG_HASH:=2ad578c6cae22f192fefd44e1449725228d4109ee781998b41dcbae872554968
 
 PKG_SOURCE:=backports-$(PKG_VERSION).tar.zst
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/$(if $(BUILD_VARIANT),$(PKG_NAME)-$(BUILD_VARIANT)/)backports-$(PKG_VERSION)
@@ -37,16 +37,19 @@ PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_MAC80211_MESH \
 	CONFIG_PACKAGE_MAC80211_TRACING \
 	CONFIG_PACKAGE_MAC80211_NSS_SUPPORT \
+	CONFIG_PACKAGE_MAC80211_NSS_REDIRECT \
 	CONFIG_PACKAGE_IWLWIFI_DEBUG \
 	CONFIG_PACKAGE_IWLWIFI_DEBUGFS \
-	CONFIG_PACKAGE_RTLWIFI_DEBUG \
+	CONFIG_PACKAGE_RTLWIFI_DEBUG
 
 include $(INCLUDE_DIR)/package.mk
 
 WMENU:=Wireless Drivers
 
-# NSS Wi-Fi offload patch sets (applied only with CONFIG_ATH11K_NSS_SUPPORT)
-NSS_PATCH:=subsys ath11k
+NSS_PATCH:= subsys ath10k ath11k
+IPQ_BRANCH:=$(shell git -C $(TOPDIR) rev-parse --abbrev-ref HEAD)
+IPQ_DATE:=$(shell git -C $(TOPDIR) log -1 --format=%cd --date=format:%Y-%m-%d)
+IPQ_COMMIT:=$(shell git -C $(TOPDIR) log -1 --format=%h)
 
 define KernelPackage/mac80211/Default
   SUBMENU:=$(WMENU)
@@ -135,11 +138,14 @@ define KernelPackage/mac80211
   TITLE:=Linux 802.11 Wireless Networking Stack
   # +kmod-crypto-cmac is a runtime only dependency of net/mac80211/aes_cmac.c
   DEPENDS+= +kmod-cfg80211 +kmod-crypto-cmac +kmod-crypto-ccm +kmod-crypto-gcm +hostapd-common \
-	+ATH11K_NSS_SUPPORT:kmod-qca-nss-drv \
-	+ATH11K_NSS_MESH_SUPPORT:kmod-qca-nss-drv-wifi-meshmgr
+  +ATH11K_NSS_SUPPORT:kmod-qca-nss-drv
   KCONFIG:=\
 	CONFIG_AVERAGE=y
   FILES:= $(PKG_BUILD_DIR)/net/mac80211/mac80211.ko
+ifdef CONFIG_PACKAGE_MAC80211_NSS_REDIRECT
+  AUTOLOAD:=$(call AutoProbe, mac80211)
+  MODPARAMS.mac80211:=nss_redirect=1
+endif
   ABI_VERSION:=$(PKG_VERSION)-$(PKG_RELEASE)
   MENU:=1
 endef
@@ -147,13 +153,20 @@ endef
 define KernelPackage/mac80211/config
   if PACKAGE_kmod-mac80211
 
-	config PACKAGE_MAC80211_NSS_SUPPORT
-		bool "Enable NSS offload support in mac80211"
-		depends on PACKAGE_kmod-qca-nss-drv
-		default y
-		help
-		  Compile mac80211 with support for handing vifs over to the
-		  Qualcomm NSS cores (required for ath11k NSS Wi-Fi offload).
+  if PACKAGE_kmod-qca-nss-drv
+		config PACKAGE_MAC80211_NSS_SUPPORT
+			bool "Enable NSS support"
+			default y
+			help
+				This option enables support for NSS in QCA boards.
+		config PACKAGE_MAC80211_NSS_REDIRECT
+			bool "Enable autoloading with 'nss_redirect=1' (not needed on ath11k)"
+			depends on PACKAGE_MAC80211_NSS_SUPPORT
+			default n
+			help
+				This option enables autoloading mac80211 with 'nss_redirect=1'.
+				However, it is not required for wifi offloading.
+  endif
 
 	config PACKAGE_MAC80211_DEBUGFS
 		bool "Export mac80211 internals in DebugFS"
@@ -296,6 +309,14 @@ ifeq ($(BUILD_VARIANT),smallbuffers)
 	C_DEFINES+= -DCONFIG_ATH10K_SMALLBUFFERS
 endif
 
+ifdef CONFIG_ATH11K_NSS_SUPPORT
+	IREMAP_CFLAGS+=-I$(STAGING_DIR)/usr/include/qca-nss-drv -I$(STAGING_DIR)/usr/include/qca-nss-clients
+endif
+
+ifeq ($(CONFIG_NSS_FIRMWARE_VERSION_11_4),y)
+	C_DEFINES+=-DCONFIG_NSS_FIRMWARE_VERSION_11_4
+endif
+
 config-$(CONFIG_PACKAGE_MAC80211_NSS_SUPPORT) += MAC80211_NSS_SUPPORT
 
 MAKE_OPTS:= \
@@ -307,22 +328,10 @@ MAKE_OPTS:= \
 	KERNEL_SUBLEVEL=$(lastword $(subst ., ,$(KERNEL_PATCHVER))) \
 	KBUILD_LDFLAGS_MODULE_PREREQ=
 
-# kbuild >= 6.15 ignores EXTRA_CFLAGS, and backports folds $(CFLAGS) into
-# NOSTDINC_FLAGS (Makefile.kernel), so the staged qca-nss-drv include path
-# must travel via CFLAGS.
+# E176: on this tree EXTRA_CFLAGS is overridden by NOSTDINC_FLAGS in the
+# backports Makefile.kernel, so pass the staged qca-nss-drv include path
+# through CFLAGS as the openwrt-nss-edma mac80211 package does.
 ifdef CONFIG_ATH11K_NSS_SUPPORT
-  # qca-nss-clients staging carries nss_wifi_meshmgr.h for the ath11k
-  # mesh offload path; the directory only exists once qca-nss-clients is
-  # staged, which the kmod-qca-nss-drv-wifi-meshmgr dependency guarantees.
-  # The 11.4 firmware line uses older wifili exception metadata: the
-  # ath11k NSS patches key the differing decode paths on
-  # CONFIG_NSS_FIRMWARE_VERSION_11_4, which kbuild does not export to
-  # external modules, so pass it explicitly.
-  # The qca-nss-drv export headers gate NSS firmware-version dependent
-  # struct fields on the UNPREFIXED NSS_FIRMWARE_VERSION_* macros (the drv
-  # itself builds with them). ath11k must see the same definitions or the
-  # shared wifili message layouts (e.g. the per-peer stats array stride)
-  # silently diverge from what the driver and firmware fill.
   MAKE_OPTS += CFLAGS="-I$(STAGING_DIR)/usr/include/qca-nss-drv$(if $(CONFIG_ATH11K_NSS_MESH_SUPPORT), -I$(STAGING_DIR)/usr/include/qca-nss-clients)$(if $(CONFIG_NSS_FIRMWARE_VERSION_11_4), -DCONFIG_NSS_FIRMWARE_VERSION_11_4 -DNSS_FIRMWARE_VERSION_11_4)$(if $(CONFIG_NSS_FIRMWARE_VERSION_12_5), -DNSS_FIRMWARE_VERSION_12_5)"
 endif
 
@@ -393,9 +402,6 @@ ifdef CONFIG_ATH11K_NSS_SUPPORT
 	$(foreach driver,$(NSS_PATCH),
 		$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/nss/$(driver),nss/$(driver)/)
 	)
-ifdef CONFIG_ATH11K_NSS_MESH_SUPPORT
-	$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/nss/mesh,nss/mesh/)
-endif
 endif
 	$(if $(QUILT),touch $(PKG_BUILD_DIR)/.quilt_used)
 endef
@@ -418,9 +424,6 @@ ifdef CONFIG_ATH11K_NSS_SUPPORT
 	$(foreach driver,$(NSS_PATCH),
 		$(call Quilt/RefreshDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/nss/$(driver),nss/$(driver)/)
 	)
-ifdef CONFIG_ATH11K_NSS_MESH_SUPPORT
-	$(call Quilt/RefreshDir,$(PKG_BUILD_DIR),$(PATCH_DIR)/nss/mesh,nss/mesh/)
-endif
 endif
 endef
 
@@ -443,13 +446,16 @@ define Build/InstallDev
 	rm -f $(1)/usr/include/mac80211-backport/linux/module.h
 endef
 
-
 ifdef CONFIG_ATH11K_NSS_SUPPORT
 define KernelPackage/ath11k/install
-	$(INSTALL_DIR) $(1)/etc/init.d $(1)/etc/config $(1)/usr/bin
+	$(INSTALL_DIR) $(1)/etc/init.d $(1)/etc/config $(1)/usr/bin $(1)/etc/hotplug.d/net
 	$(INSTALL_BIN) ./files/qca-nss-pbuf.init $(1)/etc/init.d/qca-nss-pbuf
 	$(INSTALL_DATA) ./files/pbuf.uci $(1)/etc/config/pbuf
 	$(INSTALL_BIN) ./files/nss_diag.sh $(1)/usr/bin/nss_diag
+	$(INSTALL_DATA) ./files/disable_mesh_chksum_ath11k.hotplug $(1)/etc/hotplug.d/net/99-disable_mesh_chksum_ath11k
+	echo "IPQ_BRANCH=$(IPQ_BRANCH)" > $(1)/etc/ipq_release
+	echo "IPQ_DATE=$(IPQ_DATE)" >> $(1)/etc/ipq_release
+	echo "IPQ_COMMIT=$(IPQ_COMMIT)" >> $(1)/etc/ipq_release
 endef
 endif
 
