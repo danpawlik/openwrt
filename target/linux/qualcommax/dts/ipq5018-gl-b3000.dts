@@ -284,13 +284,12 @@
 };
 
 &q6v5_wcss {
-	/* B3000 currently doesn't support passing bootargs */
-	/*boot-args = <					*/
-			/*       type:	0x1  PCIE0	*/
-			/*     length:	4		*/
-			/*      PD id:	3		*/
-			/* reset GPIO:	15		*/
-			/*   reserved:	0 0>;		*/
+	/* No boot-args: the GL.iNet bootloader pre-allocates SMEM item 507
+	 * with 8 bytes (measured, E151), so the user PD boot info cannot be
+	 * shared - writing it anyway corrupts SMEM and the Q6 dies with
+	 * "fatal error received: err_smem_ver.2.1" ~40 s later. The QCN6122
+	 * therefore stays on the Q6's default user PD 3.
+	 */
 };
 
 &wifi {
@@ -299,7 +298,7 @@
 	qcom,rproc = <&q6_wcss_pd1>;
 	qcom,userpd-subsys-name = "q6v5_wcss_userpd1";
 	qcom,ath11k-calibration-variant = "GL-iNet-GL-B3000";
-	qcom,ath11k-fw-memory-mode = <1>;
+	qcom,ath11k-fw-memory-mode = <2>; /* wifili needs mode 2 on the QCN6122 (reported working by LS3434) */
 	qcom,bdf-addr = <0x4c400000>;
 };
 
@@ -309,7 +308,7 @@
 	qcom,rproc = <&q6_wcss_pd3>;
 	qcom,userpd-subsys-name = "q6v5_wcss_userpd3";
 	qcom,ath11k-calibration-variant = "GL-iNet-GL-B3000";
-	qcom,ath11k-fw-memory-mode = <1>;
+	qcom,ath11k-fw-memory-mode = <2>; /* wifili needs mode 2 on the QCN6122 (reported working by LS3434) */
 	qcom,bdf-addr = <0x4d100000>;
 	qcom,m3-dump-addr = <0x4df00000>;
 };
