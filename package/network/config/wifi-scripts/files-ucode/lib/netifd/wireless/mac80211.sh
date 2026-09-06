@@ -8,7 +8,7 @@ import * as supplicant from 'wifi.supplicant';
 import * as hostapd from 'wifi.hostapd';
 import * as netifd from 'wifi.netifd';
 import * as iface from 'wifi.iface';
-import { find_phy } from 'wifi.utils';
+import { find_phy, phys_present } from 'wifi.utils';
 import * as nl80211 from 'nl80211';
 import * as fs from 'fs';
 
@@ -167,7 +167,15 @@ function setup() {
 
 	data.phy = find_phy(data.config, true);
 	if (!data.phy) {
-		log('Bug: PHY is undefined for device');
+		/*
+		 * No PHY registered at all means the radio driver has not been
+		 * loaded yet - with the NSS Wi-Fi offload ath11k is brought up
+		 * late, after the NSS core, and a hotplug event reconfigures us
+		 * once the PHY shows up. Only complain when other PHYs are
+		 * present, which does point at a configuration problem.
+		 */
+		if (phys_present())
+			log('Bug: PHY is undefined for device');
 		netifd.set_retry(false);
 		return 1;
 	}
@@ -325,7 +333,9 @@ function teardown() {
 		return 0;
 
 	if (!data.data?.phy) {
-		log('Bug: PHY is undefined for device');
+		/* Nothing was ever set up - see setup() above. */
+		if (phys_present())
+			log('Bug: PHY is undefined for device');
 		return 1;
 	}
 
