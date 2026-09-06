@@ -50,7 +50,8 @@ NAT46_PRIV_FLAGS_EXT = $(shell grep -qs 'priv_flags_ext' $(LINUX_DIR)/include/li
 define Build/Compile
 	+$(KERNEL_MAKE) M="$(PKG_BUILD_DIR)/nat46/modules" \
 		MODFLAGS="-DMODULE -mlong-calls" \
-		EXTRA_CFLAGS="-DNAT46_VERSION=\\\"$(PKG_SOURCE_VERSION)\\\" $(NAT46_PRIV_FLAGS_EXT)" \
+		EXTRA_CFLAGS="-DNAT46_VERSION=\\\"$(PKG_SOURCE_VERSION)\\\"" \
+		CFLAGS_MODULE="$(NAT46_PRIV_FLAGS_EXT)" \
 		modules
 endef
 
