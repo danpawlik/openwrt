@@ -1,5 +1,11 @@
 config general opt
-  option auto_scale 'off'
+  # Frequency scaling. On ipq5018 the NSS frequency table has MID = MAX =
+  # 1 GHz (see ipq5018-nss.dtsi), so the governor has nowhere to scale down
+  # to - measured: 2 minutes idle, still 1 GHz. What it does buy is the CPU
+  # utilization report: the driver only asks the firmware for instruction
+  # counts while scaling is enabled, so with this off cpu_load_ubi reads a
+  # meaningless "Min 100% Avg 0% Max 0%".
+  option auto_scale 'on'
   # option memory_profile 'off'
   option memory_profile 'auto'
   # option memory_profile '1gb'
