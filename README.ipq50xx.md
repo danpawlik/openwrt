@@ -10,8 +10,9 @@ different glue.
 Validated on the **GL.iNet GL-B3000** (IPQ5018 + QCA8337 + QCN6122):
 routed NAT through the firmware at the ceiling of the single 1 GbE CPU port
 (~900 Mbit/s measured, ~911 by arithmetic - see *The single CPU port ceiling*) with the CPU
-**above 90 % idle** under load. Wired only: Wi-Fi runs on the host path, for a
-firmware reason explained below.
+**above 90 % idle** under load. **Wi-Fi runs on the NSS path too** since the
+core-clock fix described below: both radios (internal 2.4 GHz + QCN6122),
+734/447 Mbit/s through the router over 5 GHz.
 
 Discussion and test reports: the
 [forum thread](https://forum.openwrt.org/t/ipq5018-nss-offload-on-kernel-6-18-with-the-upstream-ethernet-stack-gl-b3000/253014).
@@ -85,8 +86,8 @@ CONFIG_PACKAGE_kmod-ppp=y
 CONFIG_PACKAGE_kmod-pppoe=y
 CONFIG_PACKAGE_kmod-qca-nss-drv-pppoe=y
 
-# ath11k with the NSS patches applied. Not needed for the wired plane -
-# Wi-Fi stays on the host path - but this is the validated combination.
+# ath11k with the NSS patches applied. Needed for the Wi-Fi offload, and
+# the validated combination for the wired plane as well.
 CONFIG_PACKAGE_MAC80211_NSS_SUPPORT=y
 CONFIG_ATH11K_NSS_SUPPORT=y
 CONFIG_NSS_DRV_WIFIOFFLOAD_ENABLE=y
@@ -163,7 +164,7 @@ migrates an existing DSA-style network config once (`br-lan` ports →
 | Option | Default | Meaning |
 |---|---|---|
 | `enabled` | `1` | `0` = stay on the host stack (same topology, no firmware) |
-| `wifi_offload` | `0` | `1` = load ath11k with `nss_offload=1`. **Investigation only** - see *Wi-Fi*. |
+| `wifi_offload` | `0` | `1` = load ath11k with `nss_offload=1`. Validated on the GL-B3000; the default stays `0` until other boards report back. |
 | `fw_mask` | `0x2` | bitmask of GMACs to hand to the firmware; bit N = GMAC N. Only GMAC1 is validated. |
 | `vtu` | *(B3000 wiring on the B3000, empty elsewhere)* | VTU program for `qca8337-nss`; empty = VTU off, the switch stays one untagged LAN. Only needed when WAN shares the trunk (see *Porting*) |
 | `trunk` | `eth0` | the switch trunk netdev = GMAC1. `eth1` on a board whose GMAC0 is the WAN PHY (Xunison D50). |
@@ -274,7 +275,7 @@ Legend as in the [IPQ807x README](README.md): ✅ offloaded & validated ·
 | 802.1Q VLAN | ✅ | the trunk itself; `qca-nss-vlan` |
 | L2 between LAN ports | ✅ | in the switch fabric (same VLAN), never reaches the SoC |
 | PPPoE | 🟨 | Builds and links now: kernel patch `0961` gained the lockless `__ppp_hold_channels()` / `__ppp_is_multilink()` that ECM's deadlock fix needs, and `kmod-qca-nss-drv-pppoe` is selected - without that manager ECM tracks PPPoE flows but silently never accelerates them (found by AugustoAmaral, who measured ~950 Mbit/s at 84-95 % idle on an AX6000 once it was in). Not measured here - no PPPoE uplink on this bench. |
-| Wi-Fi (wifili) | ❌ | firmware bug, see below; Wi-Fi runs on the host path |
+| Wi-Fi (wifili) | ✅ | both radios; 734/447 Mbit/s over 5 GHz through the router, host ~90 % idle. Needs the core-clock fix - see below |
 | SQM / NSS qdiscs | ⬜ | not carried for ipq50xx |
 | Multicast snooping (`qca-mcs`) | ⬜ | not carried for ipq50xx |
 | MAP-T / DS-Lite | 🟨 | `kmod-nat46` staging from the base; untested here |
@@ -290,20 +291,28 @@ offload.
 
 ### Wi-Fi
 
-The wifili data path of the MP firmware line dies on the first RX exception
-from an authorized peer: the UBI32 core traps at image address `0x40004918`
-and the whole firmware→host direction stops. Ninety-two ath11k NSS patches and
-twenty-two investigation knobs later, that is a firmware fault, not a host one -
-none of the host-side variants avoids it. So `wifi_offload` defaults to `0`,
-ath11k loads on the host path, the wifili node is never registered, and the
-firmware never touches the broken path. Wired acceleration is unaffected.
+Both radios run the firmware's data path, with ath11k on the host doing
+management only. Set `nss.general.wifi_offload=1`; the service then loads
+ath11k after the arm, because `ath11k_nss_setup()` checks the NSS core state at
+module load and never retries.
 
-The one host-side lead not yet closed: the stock `qca-wifi` driver sends
-`PEER_UPDATE_AUTH_FLAG` from the port-authorized path *after* the 4-way
-handshake, while ath11k sends it from `set_key`, ~40 ms after peer create. Real
-divergence, unproven cause.
+What used to make this impossible was **not** a firmware bug, contrary to what
+this file said for weeks. It was `gcc_ubi0_core_clk`: the bootloader leaves the
+branch running, Linux has no consumer for it until `qca-nss-drv` probes ~25 s
+into boot, so `clk_disable_unused()` gates it at ~2 s and the UBI32 core is
+released from reset unclocked. It boots and answers, and the first WPA2 client
+then takes the offload down. Kernel patch `0192` flags the branch
+`CLK_IGNORE_UNUSED`; measured on cold boots, 11 lives / 0 deaths with the
+branch kept against 0 / 3 with it gated. The earlier trap analysis (`0x40004918`,
+`PEER_UPDATE_AUTH_FLAG` ordering) was a dead end and is withdrawn.
 
-## Two firmware-boot fixes worth knowing about (feed patches)
+Two things learned on the way, in case they save someone else the time: results
+from warm reboots mean nothing here - one variant lived 5/0 across `reboot` and
+died on its first cold boot - and an empty WIFILI section in `nss_stats` was our
+own N2H bounds check dropping every SOC statistics message, because those are
+larger (2092 B) than the data frame size the host advertises (2048 B).
+
+## Fixes worth knowing about
 
 - **`0136` - park the core before copying the firmware over it.** Warm
   reboots used to leave the NSS core dead one time in two: the old firmware
@@ -312,6 +321,13 @@ divergence, unproven cause.
   documents the same symptom as unresolved; this is the fix.
 - **`0137` - map the meminfo block table non-cacheable** (`ioremap_wc`). Found
   first by Adriel Santos for the AX3000T port; carried here with credit.
+- **`0192` (kernel) - keep `gcc_ubi0_core_clk` enabled**, so the NSS core never
+  leaves reset unclocked. See *Wi-Fi*. Same family as the CMN PLL fix that this
+  branch also needs.
+- **`0138` (feed) - enable the NSS core clock before setting its rate**, and
+  configure it before the AXI buses. Removes the `rcg didn't update its
+  configuration` warnings and makes the DTS frequency stick; the core runs at
+  1 GHz instead of 850 MHz.
 
 ## Acknowledgements
 
