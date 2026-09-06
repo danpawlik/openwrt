@@ -36,7 +36,7 @@ function phy_path_match_any(phy, paths) {
 }
 
 function __find_phy_by_path(phys, paths) {
-	if (!paths)
+	if (!paths || !phys)
 		return null;
 
 	for (let path in phy_paths(paths)) {
@@ -44,6 +44,8 @@ function __find_phy_by_path(phys, paths) {
 			continue;
 		path = split(path, "+");
 		let match = filter(phys, (phy) => phy_path_match(phy, path[0]));
+		if (!match)
+			continue;
 		match = sort(match, (a, b) => phy_index(a) - phy_index(b));
 		match = match[+path[1]];
 		if (match)
@@ -125,8 +127,17 @@ function find_phy_by_name(phys, name, rename) {
 	return index(phys, name) < 0 ? null : name;
 }
 
+export function phys_present() {
+	let phys = lsdir("/sys/class/ieee80211");
+
+	return phys && length(phys) > 0;
+};
+
 export function find_phy(config, rename) {
 	let phys = lsdir("/sys/class/ieee80211");
+
+	if (!phys)
+		return null;
 
 	return find_phy_by_path(phys, config.path) ??
 	       find_phy_by_macaddr(phys, config.macaddr) ??
