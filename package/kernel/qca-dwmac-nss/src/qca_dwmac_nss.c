@@ -45,6 +45,7 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 #include <linux/soc/qcom/qca_dwmac.h>
+#include <linux/firmware/qcom/qcom_scm.h>
 
 #include "nss_dp_api_if.h"
 
@@ -86,6 +87,7 @@ enum dwmac_nss_port_state {
 struct dwmac_nss_port {
 	int if_num;
 	struct net_device *netdev;	/* held while armed */
+	atomic_t rx_kicks;		/* E181: manual RX poll-demand kicks */
 	enum dwmac_nss_port_state state;
 	bool headroom_added;		/* dp_ops->init() added 32B */
 	netdev_features_t saved_wanted_features;
@@ -752,6 +754,84 @@ static const struct file_operations dwmac_nss_fw_mask_fops = {
 };
 
 /*
+ * ===== rx_kick (E181) =====
+ *
+ * Write 1: for every armed port clear the sticky RU/TU bits and write the
+ * GMAC receive poll demand, so a DMA parked in "suspended - descriptor
+ * unavailable" re-reads the firmware's ring. Read: the DMA status per port.
+ */
+static ssize_t dwmac_nss_rx_kick_write(struct file *file,
+				       const char __user *ubuf,
+				       size_t count, loff_t *ppos)
+{
+	unsigned long val;
+	char buf[24];
+	int i, ret;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+	if (copy_from_user(buf, ubuf, count))
+		return -EFAULT;
+	buf[count] = '\0';
+	ret = kstrtoul(strim(buf), 0, &val);
+	if (ret)
+		return ret;
+	if (!val)
+		return count;
+
+	mutex_lock(&dwmac_nss_lock);
+	for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++) {
+		struct dwmac_nss_port *port = &dwmac_nss_ports[i];
+		u32 before, after;
+
+		if (port->state < DWMAC_NSS_PORT_ARMED || !port->netdev)
+			continue;
+		before = qca_dwmac_dp_dma_status(port->netdev);
+		after = qca_dwmac_dp_rx_kick(port->netdev);
+		atomic_inc(&port->rx_kicks);
+		netdev_info(port->netdev,
+			    "qca-dwmac-nss: rx_kick: dma_status %08x -> %08x (rs %u->%u ru %u->%u)\n",
+			    before, after, (before >> 17) & 7, (after >> 17) & 7,
+			    !!(before & 0x80), !!(after & 0x80));
+	}
+	mutex_unlock(&dwmac_nss_lock);
+	return count;
+}
+
+static int dwmac_nss_rx_kick_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	mutex_lock(&dwmac_nss_lock);
+	for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++) {
+		struct dwmac_nss_port *port = &dwmac_nss_ports[i];
+
+		if (port->state < DWMAC_NSS_PORT_ARMED || !port->netdev)
+			continue;
+		seq_printf(m, "%s dma_status=%08x kicks=%d\n",
+			   netdev_name(port->netdev),
+			   qca_dwmac_dp_dma_status(port->netdev),
+			   atomic_read(&port->rx_kicks));
+	}
+	mutex_unlock(&dwmac_nss_lock);
+	return 0;
+}
+
+static int dwmac_nss_rx_kick_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dwmac_nss_rx_kick_show, NULL);
+}
+
+static const struct file_operations dwmac_nss_rx_kick_fops = {
+	.owner		= THIS_MODULE,
+	.open		= dwmac_nss_rx_kick_open,
+	.read		= seq_read,
+	.write		= dwmac_nss_rx_kick_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+/*
  * ===== netdev events =====
  */
 
@@ -867,11 +947,58 @@ static int dwmac_nss_status_show(struct seq_file *m, void *v)
 			   (long long)atomic64_read(&port->rx_fw_pkts),
 			   atomic_read(&port->fw_link_changes),
 			   atomic_read(&port->fw_link_skipped));
+		if (port->state >= DWMAC_NSS_PORT_ARMED && port->netdev) {
+			u32 st = qca_dwmac_dp_dma_status(port->netdev);
+
+			seq_printf(m, "  dma_status=%08x rs=%u ts=%u ru=%u tu=%u rx_kicks=%d\n",
+				   st, (st >> 17) & 7, (st >> 20) & 7,
+				   !!(st & 0x80), !!(st & 0x4),
+				   atomic_read(&port->rx_kicks));
+		}
 	}
 	mutex_unlock(&dwmac_nss_lock);
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(dwmac_nss_status);
+
+/*
+ * TCSR GMAC AXI cache-attribute override, ported from nss-dp's
+ * nss_dp_hal_tcsr_set() (hal/soc_ops/ipq50xx). The QSDK ethernet driver
+ * programs this on every ipq50xx boot; without it the GMAC masters run
+ * with the reset-default AXI cache attributes. The register sits in a
+ * TZ-protected TCSR page, so writes must go through SCM; the readback
+ * is logged so a boot records what the value was before and after.
+ */
+#define DWMAC_NSS_TCSR_BASE			0x01937000
+#define DWMAC_NSS_TCSR_GMAC_AXI_CACHE_OVERRIDE	0x6224
+#define DWMAC_NSS_TCSR_GMAC_AXI_CACHE_VALUE	0x05050505
+
+static void qca_dwmac_nss_tcsr_set(void)
+{
+	phys_addr_t addr = DWMAC_NSS_TCSR_BASE +
+			   DWMAC_NSS_TCSR_GMAC_AXI_CACHE_OVERRIDE;
+	unsigned int old = 0, cur = 0;
+	int err;
+
+	if (!qcom_scm_is_available()) {
+		pr_warn("qca-dwmac-nss: SCM unavailable, TCSR override not programmed\n");
+		return;
+	}
+
+	err = qcom_scm_io_readl(addr, &old);
+	if (err)
+		pr_warn("qca-dwmac-nss: TCSR readback failed: %d\n", err);
+
+	err = qcom_scm_io_writel(addr, DWMAC_NSS_TCSR_GMAC_AXI_CACHE_VALUE);
+	if (err) {
+		pr_err("qca-dwmac-nss: SCM TCSR write error: %d\n", err);
+		return;
+	}
+
+	qcom_scm_io_readl(addr, &cur);
+	pr_info("qca-dwmac-nss: TCSR GMAC_AXI_CACHE_OVERRIDE @%pap: 0x%08x -> 0x%08x\n",
+		&addr, old, cur);
+}
 
 static int __init qca_dwmac_nss_init(void)
 {
@@ -883,6 +1010,8 @@ static int __init qca_dwmac_nss_init(void)
 		return -EINVAL;
 	}
 
+	qca_dwmac_nss_tcsr_set();
+
 	ret = register_netdevice_notifier(&dwmac_nss_netdev_nb);
 	if (ret)
 		return ret;
@@ -892,6 +1021,8 @@ static int __init qca_dwmac_nss_init(void)
 			    &dwmac_nss_status_fops);
 	debugfs_create_file("fw_mask", 0644, dwmac_nss_dentry, NULL,
 			    &dwmac_nss_fw_mask_fops);
+	debugfs_create_file("rx_kick", 0644, dwmac_nss_dentry, NULL,
+			    &dwmac_nss_rx_kick_fops);
 
 	pr_info("qca-dwmac-nss: nss-dp glue for IPQ5018 loaded (%s = phys_if %d)\n",
 		ifname, fw_if);

@@ -50,4 +50,16 @@ int qca_dwmac_dp_claim(struct net_device *dev,
 		       const struct qca_dwmac_dp_owner *owner, void *ctx);
 int qca_dwmac_dp_release(struct net_device *dev);
 
+/*
+ * Diagnostics for the firmware-owned data plane (dwmac1000 DMA block):
+ * qca_dwmac_dp_dma_status() reads the DMA status register,
+ * qca_dwmac_dp_rx_kick() clears the sticky RU/TU bits and writes the
+ * receive poll demand, so a DMA parked in "suspended - descriptor
+ * unavailable" re-reads its ring. The ring belongs to the firmware; the
+ * kick only helps once it has refilled it, and is harmless otherwise.
+ * Both return the DMA status register after the operation.
+ */
+u32 qca_dwmac_dp_dma_status(struct net_device *dev);
+u32 qca_dwmac_dp_rx_kick(struct net_device *dev);
+
 #endif /* __LINUX_SOC_QCOM_QCA_DWMAC_H */

@@ -1,0 +1,57 @@
+From: kuncy7 <stefdo61@gmail.com>
+Subject: [PATCH] net: stmmac: expose DMA status and an RX poll kick for the NSS data-plane owner
+
+E181 (2026-08-30): with the NSS firmware owning the GMAC ring, a burst of
+egress through a wifili STA vdev can leave the receive DMA parked in
+"suspended - descriptor unavailable" (RS=100, RU set) and the firmware
+never issues the poll demand that would resume it. Give the owner two
+helpers: read the DMA status, and clear RU/TU then write the receive
+poll demand.
+
+Signed-off-by: kuncy7 <stefdo61@gmail.com>
+---
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -2466,6 +2466,42 @@
+ }
+ EXPORT_SYMBOL(qca_dwmac_dp_release);
+ 
++/*
++ * Diagnostics for a firmware-owned data plane. IPQ5018 carries a dwmac1000
++ * DMA block: status at 0x1014, receive poll demand at 0x1008. RU/TU in the
++ * status register are sticky (write-1-to-clear); a DMA that parked in
++ * "suspended - descriptor unavailable" resumes only on a poll demand.
++ */
++#define QCA_DWMAC_DMA_RCV_POLL_DEMAND	0x00001008
++#define QCA_DWMAC_DMA_STATUS		0x00001014
++#define QCA_DWMAC_DMA_STATUS_TU		0x00000004
++#define QCA_DWMAC_DMA_STATUS_RU		0x00000080
++
++u32 qca_dwmac_dp_dma_status(struct net_device *dev)
++{
++	struct stmmac_priv *priv;
++
++	if (!dev || dev->netdev_ops != &stmmac_netdev_ops)
++		return 0;
++	priv = netdev_priv(dev);
++	return readl(priv->ioaddr + QCA_DWMAC_DMA_STATUS);
++}
++EXPORT_SYMBOL(qca_dwmac_dp_dma_status);
++
++u32 qca_dwmac_dp_rx_kick(struct net_device *dev)
++{
++	struct stmmac_priv *priv;
++
++	if (!dev || dev->netdev_ops != &stmmac_netdev_ops)
++		return 0;
++	priv = netdev_priv(dev);
++	writel(QCA_DWMAC_DMA_STATUS_RU | QCA_DWMAC_DMA_STATUS_TU,
++	       priv->ioaddr + QCA_DWMAC_DMA_STATUS);
++	writel(1, priv->ioaddr + QCA_DWMAC_DMA_RCV_POLL_DEMAND);
++	return readl(priv->ioaddr + QCA_DWMAC_DMA_STATUS);
++}
++EXPORT_SYMBOL(qca_dwmac_dp_rx_kick);
++
+ /**
+  *  stmmac_dma_operation_mode - HW DMA operation mode
+  *  @priv: driver private structure
