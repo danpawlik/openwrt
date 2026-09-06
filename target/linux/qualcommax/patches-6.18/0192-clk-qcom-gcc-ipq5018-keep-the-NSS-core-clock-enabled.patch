@@ -1,0 +1,52 @@
+From: Stanislaw Pal <kuncy7@gmail.com>
+Date: Sat, 5 Sep 2026 14:30:00 +0200
+Subject: [PATCH] clk: qcom: gcc-ipq5018: keep the NSS core clock enabled
+
+The bootloader leaves gcc_ubi0_core_clk (the clock branch feeding the
+UBI32 network subsystem core) enabled. Linux has no consumer for it
+until the NSS driver probes some 25 s into boot, so clk_disable_unused()
+gates it at late_initcall and the driver re-enables it later.
+
+On the GL.iNet GL-B3000 (IPQ5018) that gate-and-regate leaves the core in
+a state from which the Wi-Fi datapath offload (wifili) does not recover:
+the first WPA2 client to associate never completes the 4-way handshake,
+the firmware's N2H counters freeze and the core has to be power-cycled.
+The failure only shows on cold boots, where the core comes out of the
+bootloader state; after a warm reboot the driver has already reset the
+core once and the same gate is harmless.
+
+Bisection with a per-clock keep list over the 194 GCC clocks isolates
+this single branch: keeping it alone across clk_disable_unused() gives
+4/4 cold-boot survivals, dropping it from an otherwise identical keep
+list kills the core on the first client every time (0/3), and the global
+clk_ignore_unused workaround that has been in use so far (20/20) does
+nothing more than this for the NSS path. The other NSS-node branches
+(cfg, dbg, utcm, nc_axi, snoc_axi) and the Q6/WCSS branches are not
+involved.
+
+Mark the branch CLK_IGNORE_UNUSED so it stays in the state the
+bootloader left it in until the NSS driver takes it over.
+
+Signed-off-by: Stanislaw Pal <kuncy7@gmail.com>
+---
+--- a/drivers/clk/qcom/gcc-ipq5018.c
++++ b/drivers/clk/qcom/gcc-ipq5018.c
+@@ -2876,17 +2876,17 @@
+ 		.enable_reg = 0x68210,
+ 		.enable_mask = BIT(0),
+ 		.hw.init = &(struct clk_init_data) {
+ 			.name = "gcc_ubi0_core_clk",
+ 			.parent_hws = (const struct clk_hw *[]) {
+ 				&ubi0_core_clk_src.clkr.hw,
+ 			},
+ 			.num_parents = 1,
+-			.flags = CLK_SET_RATE_PARENT,
++			.flags = CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
+ 			.ops = &clk_branch2_ops,
+ 		},
+ 	},
+ };
+ 
+ static struct clk_branch gcc_ubi0_nc_axi_clk = {
+ 	.halt_reg = 0x68204,
+ 	.halt_check = BRANCH_HALT_DELAY,
