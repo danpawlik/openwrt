@@ -27,6 +27,9 @@ nss_dwmac_board_defaults() {
 		# port 0 = CPU (SGMII), 1 = wan, 2-3 = lan
 		fw_mask='0x2'
 		trunk='eth0'
+		# Wi-Fi offload is validated on this board (see README, *Wi-Fi*);
+		# elsewhere it stays off until someone reports a cold-boot series.
+		wifi_offload='1'
 		switch_args=''
 		vtu='1:0t,2u,3u;2:0t,1u'
 		;;
@@ -76,7 +79,7 @@ fi
 # Defaults for the ipq50xx plane (the config file itself ships with
 # qca-nss-drv; only fill what is not set).
 [ -n "$(uci -q get nss.general.enabled)" ] || uci set nss.general.enabled='1'
-[ -n "$(uci -q get nss.general.wifi_offload)" ] || uci set nss.general.wifi_offload='0'
+[ -n "$(uci -q get nss.general.wifi_offload)" ] || uci set nss.general.wifi_offload="${wifi_offload:-0}"
 [ -n "$(uci -q get nss.general.fw_logbuf)" ] || uci set nss.general.fw_logbuf='256'
 [ -z "$(uci -q get nss.general.fw_mask)" ] && [ -n "$fw_mask" ] && uci set nss.general.fw_mask="$fw_mask"
 [ -z "$(uci -q get nss.general.vtu)" ] && [ -n "$vtu" ] && uci set nss.general.vtu="$vtu"
