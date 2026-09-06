@@ -124,6 +124,12 @@ start_service() {
 	[ -n "$trunk" ] || trunk=eth0
 	insmod "/lib/modules/$(uname -r)/qca-dwmac-nss.ko" ifname="$trunk" 2>/dev/null ||
 		modprobe qca-dwmac-nss 2>/dev/null
+	# The insmod above is a no-op when the module is already loaded, and it
+	# often is: qca-nss-drv pulls the glue in as a symbol dependency, so
+	# kmodloader can get there first and the parameter is then lost without
+	# a word. Set the name through debugfs too, which works either way.
+	[ -w /sys/kernel/debug/qca-dwmac-nss/ifname ] &&
+		echo "$trunk" > /sys/kernel/debug/qca-dwmac-nss/ifname
 	modprobe qca-nss-drv 2>/dev/null
 
 	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.

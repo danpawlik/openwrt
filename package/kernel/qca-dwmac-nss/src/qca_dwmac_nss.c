@@ -43,6 +43,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
+#include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/soc/qcom/qca_dwmac.h>
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -61,7 +62,19 @@
 
 static char *ifname = "eth0";
 module_param(ifname, charp, 0444);
-MODULE_PARM_DESC(ifname, "netdev backing the armed NSS phys_if (default eth0)");
+MODULE_PARM_DESC(ifname, "netdev backing the armed NSS phys_if (default eth0); the initial value of the debugfs 'ifname' file");
+
+/*
+ * The name the arm will look up. Seeded from the module parameter, but
+ * writable through debugfs while nothing is armed, because the module is
+ * not always loaded by whoever knows the board: qca-nss-drv pulls it in as
+ * a symbol dependency, and then it comes up with the default no matter what
+ * the configuration says. Being stuck with a load-time-only parameter meant
+ * a board whose trunk is not eth0 could not be armed at all without a
+ * rebuild (reported on the Xunison D50, where GMAC0 is renamed 'wan' and
+ * the trunk is eth1).
+ */
+static char ifname_cur[IFNAMSIZ] = "eth0";
 
 static int fw_if = 1;
 module_param(fw_if, int, 0444);
@@ -661,10 +674,10 @@ static int dwmac_nss_fw_arm(int if_num)
 	if (port->state >= DWMAC_NSS_PORT_ARMED)
 		return 0;
 
-	netdev = dev_get_by_name(&init_net, ifname);
+	netdev = dev_get_by_name(&init_net, ifname_cur);
 	if (!netdev) {
-		pr_warn("qca-dwmac-nss: no netdev '%s' to arm phys_if %d\n",
-			ifname, if_num);
+		pr_warn("qca-dwmac-nss: no netdev '%s' to arm phys_if %d - set the right one with 'echo <netdev> > /sys/kernel/debug/qca-dwmac-nss/ifname'\n",
+			ifname_cur, if_num);
 		return -ENODEV;
 	}
 
@@ -749,6 +762,62 @@ static const struct file_operations dwmac_nss_fw_mask_fops = {
 	.open		= dwmac_nss_fw_mask_open,
 	.read		= seq_read,
 	.write		= dwmac_nss_fw_mask_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+/*
+ * ===== ifname =====
+ *
+ * Which netdev the arm hands to the firmware. Refused once anything is
+ * armed: the port already holds a reference to the old netdev, and the
+ * name is what the unwind path is written around.
+ */
+
+static ssize_t dwmac_nss_ifname_write(struct file *file,
+				      const char __user *ubuf,
+				      size_t count, loff_t *ppos)
+{
+	char buf[IFNAMSIZ + 2];
+	char *name;
+	int ret = 0;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+	if (copy_from_user(buf, ubuf, count))
+		return -EFAULT;
+	buf[count] = '\0';
+
+	name = strim(buf);
+	if (!*name || strlen(name) >= IFNAMSIZ)
+		return -EINVAL;
+
+	mutex_lock(&dwmac_nss_lock);
+	if (READ_ONCE(dwmac_nss_fw_mask))
+		ret = -EBUSY;
+	else
+		strscpy(ifname_cur, name, sizeof(ifname_cur));
+	mutex_unlock(&dwmac_nss_lock);
+
+	return ret ? ret : count;
+}
+
+static int dwmac_nss_ifname_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%s\n", ifname_cur);
+	return 0;
+}
+
+static int dwmac_nss_ifname_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dwmac_nss_ifname_show, NULL);
+}
+
+static const struct file_operations dwmac_nss_ifname_fops = {
+	.owner		= THIS_MODULE,
+	.open		= dwmac_nss_ifname_open,
+	.read		= seq_read,
+	.write		= dwmac_nss_ifname_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -1010,6 +1079,8 @@ static int __init qca_dwmac_nss_init(void)
 		return -EINVAL;
 	}
 
+	strscpy(ifname_cur, ifname, sizeof(ifname_cur));
+
 	qca_dwmac_nss_tcsr_set();
 
 	ret = register_netdevice_notifier(&dwmac_nss_netdev_nb);
@@ -1021,6 +1092,8 @@ static int __init qca_dwmac_nss_init(void)
 			    &dwmac_nss_status_fops);
 	debugfs_create_file("fw_mask", 0644, dwmac_nss_dentry, NULL,
 			    &dwmac_nss_fw_mask_fops);
+	debugfs_create_file("ifname", 0644, dwmac_nss_dentry, NULL,
+			    &dwmac_nss_ifname_fops);
 	debugfs_create_file("rx_kick", 0644, dwmac_nss_dentry, NULL,
 			    &dwmac_nss_rx_kick_fops);
 
