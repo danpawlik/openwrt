@@ -1,0 +1,97 @@
+#!/bin/sh
+# Place the NSS and Wi-Fi interrupts on the cores of an ipq50xx.
+# shellcheck disable=SC3043
+#
+# Left alone, every one of them fires on CPU0: the affinity mask each IRQ
+# gets is "all CPUs", and the GIC then delivers to the lowest CPU in the
+# mask. Nothing in OpenWrt spreads them - irqbalance is not installed and
+# the qualcommax smp_affinity service exists for ipq807x/ipq60xx only.
+#
+# qca-nss-drv ships its own version of this in its init script, and it is
+# no use here for two reasons: its table is written for a quad-core
+# ipq807x with two NSS cores (the CPU 2/3 writes fail on this SoC with
+# "Value too large for data type"), and it runs at START=94, long before
+# our bring-up arms the plane - at that point the nss_queue* interrupts
+# do not exist yet, the sysctl node does not either, and nothing retries.
+# 15-nss-dwmac disables it; this runs from nss-dwmac-up instead, after
+# the arm and after ath11k, when every interrupt is registered.
+#
+# The placement on a two-core IPQ5018 with the data path offloaded:
+#
+#   CPU0   nss_queue0 and the two empty-buffer interrupts - the N2H
+#          delivery path, and by a wide margin the busiest IRQ on the box
+#          (~1000/s against ~15/s for the trunk's own interrupt)
+#   CPU1   nss_queue1 and the copy engines of both radios
+#
+# Firmware RPS has to be on for queue1 to carry anything at all: it is
+# the firmware that hashes host-terminated flows across the N2H queues,
+# and with it off every packet arrives on queue0 no matter what the
+# affinity says. It is also flow-hashing, so a single flow stays on one
+# queue by design - the split shows up with several host-terminated
+# connections, not with one.
+#
+# Interrupts left at the default (CPU0) on purpose: the trunk GMAC, whose
+# data path belongs to the firmware, and the ath11k ring interrupts,
+# which under wifili carry monitor/PPDU housekeeping only.
+
+. /lib/nss/functions.sh
+
+PROG=nss-irq-affinity
+
+log() { logger -t "$PROG" "$1"; }
+
+# Every IRQ number whose handler name is exactly $1 - the copy engines
+# appear once per radio, so a name can map to several interrupts.
+irq_list() {
+	awk -v want="$1" '$NF == want { sub(/:/, "", $1); print $1 }' /proc/interrupts
+}
+
+pin() {
+	local name="$1" cpu="$2" mask irq found=0
+
+	mask="$(printf '%x' "$((1 << cpu))")"
+	for irq in $(irq_list "$name"); do
+		found=1
+		if echo "$mask" > "/proc/irq/$irq/smp_affinity" 2>/dev/null; then
+			PINNED="$PINNED $name:$irq->$cpu"
+		else
+			log "irq $irq ($name): cannot pin to cpu $cpu"
+		fi
+	done
+	[ "$found" = 1 ]
+}
+
+ncpus() {
+	local n=0 d
+	for d in /sys/devices/system/cpu/cpu[0-9]*; do
+		[ -d "$d" ] && n=$((n + 1))
+	done
+	echo "$n"
+}
+
+[ "$(uci -q get nss.general.enable_rps)" = 0 ] && exit 0
+[ "$(ncpus)" -ge 2 ] || exit 0
+
+# The N2H queues are only worth spreading once the firmware fans out to
+# them; without this, queue1 stays at zero and the second core idles.
+sysctl -qw dev.nss.rps.enable=1 2>/dev/null ||
+	log "WARN: dev.nss.rps.enable is not there - is qca-nss-drv loaded?"
+
+PINNED=""
+pin nss_queue0 0 || log "WARN: no nss_queue0 interrupt - the NSS core is not up"
+pin nss_empty_buf_sos 0
+pin nss_empty_buf_queue 0
+pin nss_queue1 1
+
+# ath11k registers its copy engines during probe, a moment after the
+# modprobe in nss-dwmac-up returns.
+have_ce() { [ -n "$(irq_list ce1)" ]; }
+if poll_until 5 have_ce; then
+	pin ce1 1
+	pin ce2 1
+	pin ce3 1
+else
+	log "no Wi-Fi copy engines to place (ath11k not loaded)"
+fi
+
+log "placed:${PINNED:- nothing}"
