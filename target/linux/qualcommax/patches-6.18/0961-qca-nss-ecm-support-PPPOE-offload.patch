@@ -38,7 +38,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  /* Prototypes. */
  static int ppp_unattached_ioctl(struct net *net, struct ppp_file *pf,
  			struct file *file, unsigned int cmd, unsigned long arg);
-@@ -3517,7 +3537,10 @@ ppp_connect_channel(struct channel *pch,
+@@ -3543,7 +3563,10 @@ ppp_connect_channel(struct channel *pch,
  	struct ppp_net *pn;
  	int ret = -ENXIO;
  	int hdrlen;
@@ -49,7 +49,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  	pn = ppp_pernet(pch->chan_net);
  
  	mutex_lock(&pn->all_ppp_mutex);
-@@ -3553,6 +3576,26 @@ ppp_connect_channel(struct channel *pch,
+@@ -3579,6 +3602,26 @@ ppp_connect_channel(struct channel *pch,
  	++ppp->n_channels;
  	rcu_assign_pointer(pch->ppp, ppp);
  	refcount_inc(&ppp->file.refcnt);
@@ -76,7 +76,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  	ppp_unlock(ppp);
  	ret = 0;
  
-@@ -3560,6 +3603,14 @@ ppp_connect_channel(struct channel *pch,
+@@ -3586,6 +3629,14 @@ ppp_connect_channel(struct channel *pch,
  	spin_unlock(&pch->upl);
   out:
  	mutex_unlock(&pn->all_ppp_mutex);
@@ -91,7 +91,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  	return ret;
  }
  
-@@ -3576,6 +3627,13 @@ ppp_disconnect_channel(struct channel *p
+@@ -3602,6 +3653,13 @@ ppp_disconnect_channel(struct channel *p
  	ppp = rcu_replace_pointer(pch->ppp, NULL, lockdep_is_held(&pch->upl));
  	spin_unlock(&pch->upl);
  	if (ppp) {
@@ -105,7 +105,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  		/* remove it from the ppp unit's list */
  		ppp_lock(ppp);
  		list_del_rcu(&pch->clist);
-@@ -3656,6 +3714,302 @@ static void *unit_find(struct idr *p, in
+@@ -3693,6 +3751,302 @@ static void *unit_find(struct idr *p, in
  	return idr_find(p, n);
  }
  
@@ -408,7 +408,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  /* Module/initialization stuff */
  
  module_init(ppp_init);
-@@ -3672,6 +3951,7 @@ EXPORT_SYMBOL(ppp_input_error);
+@@ -3709,6 +4063,7 @@ EXPORT_SYMBOL(ppp_input_error);
  EXPORT_SYMBOL(ppp_output_wakeup);
  EXPORT_SYMBOL(ppp_register_compressor);
  EXPORT_SYMBOL(ppp_unregister_compressor);
@@ -444,7 +444,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  		po->chan.direct_xmit = true;
  
  		error = ppp_register_net_channel(dev_net(dev), &po->chan);
-@@ -1006,9 +1007,80 @@ static int pppoe_fill_forward_path(struc
+@@ -1007,9 +1008,80 @@ static int pppoe_fill_forward_path(struc
  	return 0;
  }
  

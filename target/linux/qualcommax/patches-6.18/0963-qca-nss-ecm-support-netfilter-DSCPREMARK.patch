@@ -41,7 +41,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  #include <net/netfilter/nf_nat.h>
  
  #define NF_CT_EXT_PREALLOC	128u /* conntrack events are on by default */
-@@ -54,6 +55,9 @@ static const u8 nf_ct_ext_type_len[NF_CT
+@@ -52,6 +53,9 @@ static const u8 nf_ct_ext_type_len[NF_CT
  #if IS_ENABLED(CONFIG_NET_ACT_CT)
  	[NF_CT_EXT_ACT_CT] = sizeof(struct nf_conn_act_ct_ext),
  #endif
@@ -51,7 +51,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  };
  
  static __always_inline unsigned int total_extension_size(void)
-@@ -86,6 +90,9 @@ static __always_inline unsigned int tota
+@@ -84,6 +88,9 @@ static __always_inline unsigned int tota
  #if IS_ENABLED(CONFIG_NET_ACT_CT)
  		+ sizeof(struct nf_conn_act_ct_ext)
  #endif
@@ -83,7 +83,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  #include <net/netfilter/nf_conntrack_labels.h>
  #include <net/netfilter/nf_conntrack_synproxy.h>
  #include <net/netfilter/nf_nat.h>
-@@ -1796,6 +1799,9 @@ init_conntrack(struct net *net, struct n
+@@ -1753,6 +1756,9 @@ init_conntrack(struct net *net, struct n
  	nf_ct_acct_ext_add(ct, GFP_ATOMIC);
  	nf_ct_tstamp_ext_add(ct, GFP_ATOMIC);
  	nf_ct_labels_ext_add(ct);
@@ -172,7 +172,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  static bool nft_payload_rebuild_vlan_hdr(const struct sk_buff *skb, int mac_off,
  					 struct vlan_ethhdr *veth)
  {
-@@ -860,6 +867,11 @@ static void nft_payload_set_eval(const s
+@@ -833,6 +840,11 @@ static void nft_payload_set_eval(const s
  	int offset, csum_offset, vlan_hlen = 0;
  	struct sk_buff *skb = pkt->skb;
  	__wsum fsum, tsum;
@@ -184,7 +184,7 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  
  	switch (priv->base) {
  	case NFT_PAYLOAD_LL_HEADER:
-@@ -919,10 +931,46 @@ static void nft_payload_set_eval(const s
+@@ -892,10 +904,46 @@ static void nft_payload_set_eval(const s
  			goto err;
  	}
  
