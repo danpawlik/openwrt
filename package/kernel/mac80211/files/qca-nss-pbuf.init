@@ -82,7 +82,11 @@ apply_nss_config() {
   local hash_bitmap
 
   if [ ! -r /sys/module/ath11k/parameters/nss_offload ]; then
-    logger -t $NAME "Module parameter '/sys/module/ath11k/parameters/nss_offload' does NOT exist. Skipping applying wifi nss configs"
+    # Expected during boot: with Wi-Fi offload the ath11k modules are loaded
+    # late, by nss-dwmac-up, which re-runs this script afterwards. Only say
+    # something when nobody is going to come back for us.
+    [ "$(uci -q get nss.general.wifi_offload)" = 1 ] ||
+      logger -t $NAME "Module parameter '/sys/module/ath11k/parameters/nss_offload' does NOT exist. Skipping applying wifi nss configs"
     exit 1
   fi
 
@@ -178,6 +182,8 @@ set_stats_disable() {
   local stats_disable
   config_load pbuf
   config_get stats_disable opt stats_disable 0
+
+  [ -d /sys/kernel/debug/ath11k ] || return 0
 
   find /sys/kernel/debug/ath11k -name stats_disable | while read -r stats_file; do
     [ "$(cat "$stats_file" 2>/dev/null)" = "$stats_disable" ] && continue
