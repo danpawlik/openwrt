@@ -127,7 +127,8 @@ fi
 # One-shot state dump for the boot log - what the data plane looks like
 # right after bring-up (no periodic monitoring, by design).
 echo "nss-dwmac diag: $(cat $GLUE_STATUS 2>/dev/null | tr '\n' ' ')"
-for i in $TRUNK $(ls /sys/class/net | grep "^$TRUNK\."); do
-  [ -d /sys/class/net/$i ] &&
-    echo "nss-dwmac diag: $i rx=$(cat /sys/class/net/$i/statistics/rx_packets)/$(cat /sys/class/net/$i/statistics/rx_bytes)B tx=$(cat /sys/class/net/$i/statistics/tx_packets)"
+for p in "/sys/class/net/$TRUNK" "/sys/class/net/$TRUNK".*; do
+  [ -d "$p" ] || continue
+  i="${p##*/}"
+  echo "nss-dwmac diag: $i rx=$(cat "$p/statistics/rx_packets")/$(cat "$p/statistics/rx_bytes")B tx=$(cat "$p/statistics/tx_packets")"
 done
