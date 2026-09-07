@@ -39,11 +39,9 @@ Signed-off-by: Tamizh Chelvam Raja <quic_tamizhr@quicinc.com>
  drivers/net/wireless/ath/ath11k/dp_rx.c   | 167 +++++++++++++++++-----
  5 files changed, 161 insertions(+), 38 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
-index f215fb6..05a1641 100644
 --- a/drivers/net/wireless/ath/ath11k/core.h
 +++ b/drivers/net/wireless/ath/ath11k/core.h
-@@ -979,6 +979,9 @@ struct ath11k_soc_dp_stats {
+@@ -962,6 +962,9 @@ struct ath11k_soc_dp_stats {
  	u32 rxdma_error[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
  	u32 reo_error[HAL_REO_DEST_RING_ERROR_CODE_MAX];
  	u32 hal_reo_error[DP_REO_DST_RING_MAX];
@@ -53,11 +51,9 @@ index f215fb6..05a1641 100644
  	struct ath11k_soc_dp_tx_err_stats tx_err;
  	struct ath11k_dp_ring_bp_stats bp_stats;
  };
-diff --git a/drivers/net/wireless/ath/ath11k/debugfs.c b/drivers/net/wireless/ath/ath11k/debugfs.c
-index c2a69e6..e03f298 100644
 --- a/drivers/net/wireless/ath/ath11k/debugfs.c
 +++ b/drivers/net/wireless/ath/ath11k/debugfs.c
-@@ -726,6 +726,18 @@ static ssize_t ath11k_debugfs_dump_soc_dp_stats(struct file *file,
+@@ -729,6 +729,18 @@ static ssize_t ath11k_debugfs_dump_soc_d
  			 "\nNSS Transmit Failures: %d\n",
  			 atomic_read(&soc_stats->tx_err.nss_tx_fail));
  
@@ -76,11 +72,9 @@ index c2a69e6..e03f298 100644
  	len += ath11k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
  
  	if (len > size)
-diff --git a/drivers/net/wireless/ath/ath11k/dp.c b/drivers/net/wireless/ath/ath11k/dp.c
-index 0a6347a..49a7823 100644
 --- a/drivers/net/wireless/ath/ath11k/dp.c
 +++ b/drivers/net/wireless/ath/ath11k/dp.c
-@@ -1100,8 +1100,10 @@ int ath11k_dp_alloc(struct ath11k_base *ab)
+@@ -1104,8 +1104,10 @@ int ath11k_dp_alloc(struct ath11k_base *
  
  	INIT_LIST_HEAD(&dp->reo_cmd_list);
  	INIT_LIST_HEAD(&dp->reo_cmd_cache_flush_list);
@@ -91,8 +85,6 @@ index 0a6347a..49a7823 100644
  
  	dp->reo_cmd_cache_flush_count = 0;
  
-diff --git a/drivers/net/wireless/ath/ath11k/dp.h b/drivers/net/wireless/ath/ath11k/dp.h
-index 9ecf4a5..282fe6d 100644
 --- a/drivers/net/wireless/ath/ath11k/dp.h
 +++ b/drivers/net/wireless/ath/ath11k/dp.h
 @@ -23,6 +23,7 @@ struct dp_rx_tid {
@@ -118,7 +110,7 @@ index 9ecf4a5..282fe6d 100644
  struct dp_reo_cmd {
  	struct list_head list;
  	struct dp_rx_tid data;
-@@ -295,6 +304,12 @@ struct ath11k_dp {
+@@ -296,6 +305,12 @@ struct ath11k_dp {
  	 * - reo_cmd_cache_flush_count
  	 */
  	spinlock_t reo_cmd_lock;
@@ -131,8 +123,6 @@ index 9ecf4a5..282fe6d 100644
  	struct ath11k_hp_update_timer reo_cmd_timer;
  	struct ath11k_hp_update_timer tx_ring_timer[DP_TCL_NUM_RING_MAX];
  };
-diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
-index 0448de0..10edf23 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_rx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
 @@ -22,6 +22,9 @@
@@ -145,7 +135,7 @@ index 0448de0..10edf23 100644
  static inline
  u8 *ath11k_dp_rx_h_80211_hdr(struct ath11k_base *ab, struct hal_rx_desc *desc)
  {
-@@ -673,13 +676,50 @@ static int ath11k_dp_rx_pdev_srng_alloc(struct ath11k *ar)
+@@ -673,13 +676,50 @@ static int ath11k_dp_rx_pdev_srng_alloc(
  	return 0;
  }
  
@@ -196,7 +186,7 @@ index 0448de0..10edf23 100644
  	spin_lock_bh(&dp->reo_cmd_lock);
  	list_for_each_entry_safe(cmd, tmp, &dp->reo_cmd_list, list) {
  		list_del(&cmd->list);
-@@ -725,14 +765,18 @@ static void ath11k_dp_reo_cmd_free(struct ath11k_dp *dp, void *ctx,
+@@ -725,14 +765,18 @@ static void ath11k_dp_reo_cmd_free(struc
  	}
  }
  
@@ -217,7 +207,7 @@ index 0448de0..10edf23 100644
  	desc_sz = ath11k_hal_reo_qdesc_size(0, HAL_DESC_REO_NON_QOS_TID);
  
  	while (tot_desc_sz > desc_sz) {
-@@ -743,11 +787,17 @@ static void ath11k_dp_reo_cache_flush(struct ath11k_base *ab,
+@@ -743,11 +787,17 @@ static void ath11k_dp_reo_cache_flush(st
  						HAL_REO_CMD_FLUSH_CACHE, &cmd,
  						NULL);
  		if (ret)
@@ -238,7 +228,7 @@ index 0448de0..10edf23 100644
  	memset(&cmd, 0, sizeof(cmd));
  	cmd.addr_lo = lower_32_bits(rx_tid->paddr);
  	cmd.addr_hi = upper_32_bits(rx_tid->paddr);
-@@ -755,24 +805,21 @@ static void ath11k_dp_reo_cache_flush(struct ath11k_base *ab,
+@@ -755,24 +805,21 @@ static void ath11k_dp_reo_cache_flush(st
  	ret = ath11k_dp_tx_send_reo_cmd(ab, rx_tid,
  					HAL_REO_CMD_FLUSH_CACHE,
  					&cmd, ath11k_dp_reo_cmd_free);
@@ -269,7 +259,7 @@ index 0448de0..10edf23 100644
  		goto free_desc;
  	} else if (status != HAL_REO_CMD_SUCCESS) {
  		/* Shouldn't happen! Cleanup in case of other failure? */
-@@ -781,6 +828,29 @@ static void ath11k_dp_rx_tid_del_func(struct ath11k_dp *dp, void *ctx,
+@@ -781,6 +828,29 @@ static void ath11k_dp_rx_tid_del_func(st
  		return;
  	}
  
@@ -296,10 +286,10 @@ index 0448de0..10edf23 100644
 +	}
 +	spin_unlock_bh(&dp->reo_cmd_update_queue_lock);
 +
- 	elem = kzalloc_obj(*elem, GFP_ATOMIC);
+ 	elem = kzalloc(sizeof(*elem), GFP_ATOMIC);
  	if (!elem)
  		goto free_desc;
-@@ -798,13 +868,20 @@ static void ath11k_dp_rx_tid_del_func(struct ath11k_dp *dp, void *ctx,
+@@ -798,13 +868,20 @@ static void ath11k_dp_rx_tid_del_func(st
  		if (dp->reo_cmd_cache_flush_count > DP_REO_DESC_FREE_THRESHOLD ||
  		    time_after(jiffies, elem->ts +
  			       msecs_to_jiffies(DP_REO_DESC_FREE_TIMEOUT_MS))) {

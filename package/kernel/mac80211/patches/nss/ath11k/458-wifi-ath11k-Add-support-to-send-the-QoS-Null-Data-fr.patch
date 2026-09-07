@@ -16,11 +16,9 @@ Signed-off-by: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
  drivers/net/wireless/ath/ath11k/dp_tx.c | 3 ++-
  1 file changed, 2 insertions(+), 1 deletion(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/dp_tx.c b/drivers/net/wireless/ath/ath11k/dp_tx.c
-index 85bfb83..342a3d0 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
-@@ -238,7 +238,8 @@ tcl_ring_sel:
+@@ -222,7 +222,8 @@ tcl_ring_sel:
  
  	switch (ti.encap_type) {
  	case HAL_TCL_ENCAP_TYPE_NATIVE_WIFI:

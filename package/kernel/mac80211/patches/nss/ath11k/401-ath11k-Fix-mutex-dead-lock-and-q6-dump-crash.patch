@@ -34,11 +34,9 @@ Signed-off-by: Rajat Soni <quic_rajson@quicinc.com>
  drivers/net/wireless/ath/ath11k/qmi.c | 1 +
  2 files changed, 3 insertions(+)
 
-diff --git a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
-index 41580c1..7d34a75 100644
 --- a/drivers/net/wireless/ath/ath11k/mac.c
 +++ b/drivers/net/wireless/ath/ath11k/mac.c
-@@ -7035,7 +7035,9 @@ static int ath11k_mac_op_start(struct ieee80211_hw *hw)
+@@ -6726,7 +6726,9 @@ static int ath11k_mac_op_start(struct ie
  		break;
  	case ATH11K_STATE_RESTARTING:
  		ar->state = ATH11K_STATE_RESTARTED;
@@ -48,11 +46,9 @@ index 41580c1..7d34a75 100644
  		break;
  	case ATH11K_STATE_RESTARTED:
  	case ATH11K_STATE_WEDGED:
-diff --git a/drivers/net/wireless/ath/ath11k/qmi.c b/drivers/net/wireless/ath/ath11k/qmi.c
-index 623ad54..623a9cb 100644
 --- a/drivers/net/wireless/ath/ath11k/qmi.c
 +++ b/drivers/net/wireless/ath/ath11k/qmi.c
-@@ -2067,6 +2067,8 @@ static int ath11k_qmi_assign_target_mem_chunk(struct ath11k_base *ab)
+@@ -2068,6 +2068,8 @@ static int ath11k_qmi_assign_target_mem_
  			if (!ab->qmi.target_mem[idx].iaddr)
  				return -EIO;
  

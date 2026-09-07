@@ -19,11 +19,9 @@ Signed-off-by: P Praneesh <ppranees@codeaurora.org>
  drivers/net/wireless/ath/ath11k/mac.c     |    8 ++
  6 files changed, 218 insertions(+), 9 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
-index e51ae63..088b8fa 100644
 --- a/drivers/net/wireless/ath/ath11k/core.h
 +++ b/drivers/net/wireless/ath/ath11k/core.h
-@@ -153,6 +153,7 @@ struct ath11k_skb_rxcb {
+@@ -152,6 +152,7 @@ struct ath11k_skb_rxcb {
  	u8 tid;
  	u16 peer_id;
  	u16 seq_no;
@@ -31,7 +29,7 @@ index e51ae63..088b8fa 100644
  };
  
  enum ath11k_hw_rev {
-@@ -1180,6 +1181,7 @@ struct ath11k_base {
+@@ -1163,6 +1164,7 @@ struct ath11k_base {
  	u32 max_ast_index;
  	u32 num_ast_entries;
  
@@ -39,11 +37,9 @@ index e51ae63..088b8fa 100644
  	/* must be last */
  	u8 drv_priv[] __aligned(sizeof(void *));
  };
-diff --git a/drivers/net/wireless/ath/ath11k/debugfs.c b/drivers/net/wireless/ath/ath11k/debugfs.c
-index c6f7e31..07de040 100644
 --- a/drivers/net/wireless/ath/ath11k/debugfs.c
 +++ b/drivers/net/wireless/ath/ath11k/debugfs.c
-@@ -851,6 +851,79 @@ static const struct file_operations fops_sram_dump = {
+@@ -854,6 +854,79 @@ static const struct file_operations fops
  	.llseek = default_llseek,
  };
  
@@ -123,7 +119,7 @@ index c6f7e31..07de040 100644
  int ath11k_debugfs_pdev_create(struct ath11k_base *ab)
  {
  	if (test_bit(ATH11K_FLAG_REGISTERED, &ab->dev_flags))
-@@ -902,6 +975,8 @@ int ath11k_debugfs_soc_create(struct ath11k_base *ab)
+@@ -903,6 +976,8 @@ int ath11k_debugfs_soc_create(struct ath
  		ret = PTR_ERR(ab->debugfs_soc);
  		goto out;
  	}
@@ -132,11 +128,9 @@ index c6f7e31..07de040 100644
  
  	ret = 0;
  
-diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
-index 538b010..07c5aba 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_rx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
-@@ -341,6 +341,12 @@ static int ath11k_dp_purge_mon_ring(struct ath11k_base *ab)
+@@ -341,6 +341,12 @@ static int ath11k_dp_purge_mon_ring(stru
  	return -ETIMEDOUT;
  }
  
@@ -149,7 +143,7 @@ index 538b010..07c5aba 100644
  /* Returns number of Rx buffers replenished */
  int ath11k_dp_rxbufs_replenish(struct ath11k_base *ab, int mac_id,
  			       struct dp_rxdma_ring *rx_ring,
-@@ -1664,7 +1670,7 @@ int ath11k_dp_htt_tlv_iter(struct ath11k_base *ab, const void *ptr, size_t len,
+@@ -1655,7 +1661,7 @@ int ath11k_dp_htt_tlv_iter(struct ath11k
  		len -= sizeof(*tlv);
  
  		if (tlv_len > len) {
@@ -158,7 +152,7 @@ index 538b010..07c5aba 100644
  				   tlv_tag, ptr - begin, len, tlv_len);
  			return -EINVAL;
  		}
-@@ -2454,10 +2460,60 @@ ath11k_dp_rx_h_find_peer(struct ath11k_base *ab, struct sk_buff *msdu)
+@@ -2444,10 +2450,60 @@ ath11k_dp_rx_h_find_peer(struct ath11k_b
  	return peer;
  }
  
@@ -220,7 +214,7 @@ index 538b010..07c5aba 100644
  {
  	bool  fill_crypto_hdr;
  	enum hal_encrypt_type enctype;
-@@ -2468,9 +2524,13 @@ static void ath11k_dp_rx_h_mpdu(struct ath11k *ar,
+@@ -2458,9 +2514,13 @@ static void ath11k_dp_rx_h_mpdu(struct a
  	struct rx_attention *rx_attention;
  	u32 err_bitmap;
  
@@ -235,7 +229,7 @@ index 538b010..07c5aba 100644
  	rxcb->is_mcbc = fill_crypto_hdr;
  
  	if (rxcb->is_mcbc) {
-@@ -2481,6 +2541,26 @@ static void ath11k_dp_rx_h_mpdu(struct ath11k *ar,
+@@ -2471,6 +2531,26 @@ static void ath11k_dp_rx_h_mpdu(struct a
  	spin_lock_bh(&ar->ab->base_lock);
  	peer = ath11k_dp_rx_h_find_peer(ar->ab, msdu);
  	if (peer) {
@@ -262,7 +256,7 @@ index 538b010..07c5aba 100644
  		if (rxcb->is_mcbc)
  			enctype = peer->sec_type_grp;
  		else
-@@ -2490,6 +2570,8 @@ static void ath11k_dp_rx_h_mpdu(struct ath11k *ar,
+@@ -2480,6 +2560,8 @@ static void ath11k_dp_rx_h_mpdu(struct a
  	}
  	spin_unlock_bh(&ar->ab->base_lock);
  
@@ -271,7 +265,7 @@ index 538b010..07c5aba 100644
  	rx_attention = ath11k_dp_rx_get_attention(ar->ab, rx_desc);
  	err_bitmap = ath11k_dp_rx_h_attn_mpdu_err(rx_attention);
  	if (enctype != HAL_ENCRYPT_TYPE_OPEN && !err_bitmap)
-@@ -2754,7 +2836,8 @@ static bool ath11k_dp_rx_check_nwifi_hdr_len_valid(struct ath11k_base *ab,
+@@ -2721,7 +2803,8 @@ static void ath11k_dp_rx_deliver_msdu(st
  static int ath11k_dp_rx_process_msdu(struct ath11k *ar,
  				     struct sk_buff *msdu,
  				     struct sk_buff_head *msdu_list,
@@ -281,8 +275,8 @@ index 538b010..07c5aba 100644
  {
  	struct ath11k_base *ab = ar->ab;
  	struct hal_rx_desc *rx_desc, *lrx_desc;
-@@ -2826,8 +2909,13 @@ static int ath11k_dp_rx_process_msdu(struct ath11k *ar,
- 		goto free_out;
+@@ -2788,8 +2871,13 @@ static int ath11k_dp_rx_process_msdu(str
+ 		}
  	}
  
 +	ath11k_dp_rx_h_mpdu(ar, msdu, rx_desc, rx_status, fast_rx);
@@ -296,7 +290,7 @@ index 538b010..07c5aba 100644
  
  	rx_status->flag |= RX_FLAG_SKIP_MONITOR | RX_FLAG_DUP_VALIDATED;
  
-@@ -2842,10 +2930,12 @@ static void ath11k_dp_rx_process_received_packets(struct ath11k_base *ab,
+@@ -2804,10 +2892,12 @@ static void ath11k_dp_rx_process_receive
  						  struct sk_buff_head *msdu_list,
  						  int mac_id)
  {
@@ -309,7 +303,7 @@ index 538b010..07c5aba 100644
  
  	if (skb_queue_empty(msdu_list))
  		return;
-@@ -2862,7 +2952,12 @@ static void ath11k_dp_rx_process_received_packets(struct ath11k_base *ab,
+@@ -2824,7 +2914,12 @@ static void ath11k_dp_rx_process_receive
  	}
  
  	while ((msdu = __skb_dequeue(msdu_list))) {
@@ -323,7 +317,7 @@ index 538b010..07c5aba 100644
  		if (unlikely(ret)) {
  			ath11k_dbg(ab, ATH11K_DBG_DATA,
  				   "Unable to process msdu %d", ret);
-@@ -2870,7 +2965,10 @@ static void ath11k_dp_rx_process_received_packets(struct ath11k_base *ab,
+@@ -2832,7 +2927,10 @@ static void ath11k_dp_rx_process_receive
  			continue;
  		}
  
@@ -335,7 +329,7 @@ index 538b010..07c5aba 100644
  	}
  }
  
-@@ -2879,11 +2977,12 @@ void ath11k_dp_rx_from_nss(struct ath11k *ar, struct sk_buff *msdu,
+@@ -2841,11 +2939,12 @@ void ath11k_dp_rx_from_nss(struct ath11k
  {
  	struct ieee80211_rx_status rx_status = {0};
  	struct ath11k_skb_rxcb *rxcb;
@@ -349,7 +343,7 @@ index 538b010..07c5aba 100644
  
  	rx_status.flag |= RX_FLAG_SKIP_MONITOR | RX_FLAG_DUP_VALIDATED;
  
-@@ -4251,6 +4350,7 @@ static int ath11k_dp_rx_h_null_q_desc(struct ath11k *ar, struct sk_buff *msdu,
+@@ -4379,6 +4478,7 @@ static int ath11k_dp_rx_h_null_q_desc(st
  				      struct ieee80211_rx_status *status,
  				      struct sk_buff_head *msdu_list)
  {
@@ -357,8 +351,8 @@ index 538b010..07c5aba 100644
  	u16 msdu_len;
  	struct hal_rx_desc *desc = (struct hal_rx_desc *)msdu->data;
  	struct rx_attention *rx_attention;
-@@ -4304,7 +4404,8 @@ static int ath11k_dp_rx_h_null_q_desc(struct ath11k *ar, struct sk_buff *msdu,
- 
+@@ -4428,7 +4528,8 @@ static int ath11k_dp_rx_h_null_q_desc(st
+ 	}
  	ath11k_dp_rx_h_ppdu(ar, desc, status);
  
 -	ath11k_dp_rx_h_mpdu(ar, msdu, desc, status);
@@ -367,11 +361,9 @@ index 538b010..07c5aba 100644
  
  	rxcb->tid = ath11k_dp_rx_h_mpdu_start_tid(ar->ab, desc);
  
-diff --git a/drivers/net/wireless/ath/ath11k/hw.c b/drivers/net/wireless/ath/ath11k/hw.c
-index 21488e6..7c63d2f 100644
 --- a/drivers/net/wireless/ath/ath11k/hw.c
 +++ b/drivers/net/wireless/ath/ath11k/hw.c
-@@ -293,6 +293,16 @@ static bool ath11k_hw_ipq8074_rx_desc_get_ldpc_support(struct hal_rx_desc *desc)
+@@ -293,6 +293,16 @@ static bool ath11k_hw_ipq8074_rx_desc_ge
  			 __le32_to_cpu(desc->u.ipq8074.msdu_start.info2));
  }
  
@@ -388,7 +380,7 @@ index 21488e6..7c63d2f 100644
  static bool ath11k_hw_ipq8074_rx_desc_get_mpdu_seq_ctl_vld(struct hal_rx_desc *desc)
  {
  	return !!FIELD_GET(RX_MPDU_START_INFO1_MPDU_SEQ_CTRL_VALID,
-@@ -470,6 +480,16 @@ static bool ath11k_hw_qcn9074_rx_desc_get_ldpc_support(struct hal_rx_desc *desc)
+@@ -470,6 +480,16 @@ static bool ath11k_hw_qcn9074_rx_desc_ge
  			 __le32_to_cpu(desc->u.qcn9074.msdu_start.info2));
  }
  
@@ -405,7 +397,7 @@ index 21488e6..7c63d2f 100644
  static bool ath11k_hw_qcn9074_rx_desc_get_mpdu_seq_ctl_vld(struct hal_rx_desc *desc)
  {
  	return !!FIELD_GET(RX_MPDU_START_INFO11_MPDU_SEQ_CTRL_VALID,
-@@ -943,6 +963,7 @@ const struct ath11k_hw_ops ipq8074_ops = {
+@@ -943,6 +963,7 @@ const struct ath11k_hw_ops ipq8074_ops =
  	.rx_desc_get_encrypt_type = ath11k_hw_ipq8074_rx_desc_get_encrypt_type,
  	.rx_desc_get_decap_type = ath11k_hw_ipq8074_rx_desc_get_decap_type,
  	.rx_desc_get_mesh_ctl = ath11k_hw_ipq8074_rx_desc_get_mesh_ctl,
@@ -413,7 +405,7 @@ index 21488e6..7c63d2f 100644
  	.rx_desc_get_ldpc_support = ath11k_hw_ipq8074_rx_desc_get_ldpc_support,
  	.rx_desc_get_mpdu_seq_ctl_vld = ath11k_hw_ipq8074_rx_desc_get_mpdu_seq_ctl_vld,
  	.rx_desc_get_mpdu_fc_valid = ath11k_hw_ipq8074_rx_desc_get_mpdu_fc_valid,
-@@ -984,6 +1005,7 @@ const struct ath11k_hw_ops ipq6018_ops = {
+@@ -984,6 +1005,7 @@ const struct ath11k_hw_ops ipq6018_ops =
  	.rx_desc_get_encrypt_type = ath11k_hw_ipq8074_rx_desc_get_encrypt_type,
  	.rx_desc_get_decap_type = ath11k_hw_ipq8074_rx_desc_get_decap_type,
  	.rx_desc_get_mesh_ctl = ath11k_hw_ipq8074_rx_desc_get_mesh_ctl,
@@ -421,7 +413,7 @@ index 21488e6..7c63d2f 100644
  	.rx_desc_get_ldpc_support = ath11k_hw_ipq8074_rx_desc_get_ldpc_support,
  	.rx_desc_get_mpdu_seq_ctl_vld = ath11k_hw_ipq8074_rx_desc_get_mpdu_seq_ctl_vld,
  	.rx_desc_get_mpdu_fc_valid = ath11k_hw_ipq8074_rx_desc_get_mpdu_fc_valid,
-@@ -1025,6 +1047,7 @@ const struct ath11k_hw_ops qca6390_ops = {
+@@ -1025,6 +1047,7 @@ const struct ath11k_hw_ops qca6390_ops =
  	.rx_desc_get_encrypt_type = ath11k_hw_ipq8074_rx_desc_get_encrypt_type,
  	.rx_desc_get_decap_type = ath11k_hw_ipq8074_rx_desc_get_decap_type,
  	.rx_desc_get_mesh_ctl = ath11k_hw_ipq8074_rx_desc_get_mesh_ctl,
@@ -429,7 +421,7 @@ index 21488e6..7c63d2f 100644
  	.rx_desc_get_ldpc_support = ath11k_hw_ipq8074_rx_desc_get_ldpc_support,
  	.rx_desc_get_mpdu_seq_ctl_vld = ath11k_hw_ipq8074_rx_desc_get_mpdu_seq_ctl_vld,
  	.rx_desc_get_mpdu_fc_valid = ath11k_hw_ipq8074_rx_desc_get_mpdu_fc_valid,
-@@ -1066,6 +1089,7 @@ const struct ath11k_hw_ops qcn9074_ops = {
+@@ -1066,6 +1089,7 @@ const struct ath11k_hw_ops qcn9074_ops =
  	.rx_desc_get_encrypt_type = ath11k_hw_qcn9074_rx_desc_get_encrypt_type,
  	.rx_desc_get_decap_type = ath11k_hw_qcn9074_rx_desc_get_decap_type,
  	.rx_desc_get_mesh_ctl = ath11k_hw_qcn9074_rx_desc_get_mesh_ctl,
@@ -437,7 +429,7 @@ index 21488e6..7c63d2f 100644
  	.rx_desc_get_ldpc_support = ath11k_hw_qcn9074_rx_desc_get_ldpc_support,
  	.rx_desc_get_mpdu_seq_ctl_vld = ath11k_hw_qcn9074_rx_desc_get_mpdu_seq_ctl_vld,
  	.rx_desc_get_mpdu_fc_valid = ath11k_hw_qcn9074_rx_desc_get_mpdu_fc_valid,
-@@ -1189,6 +1213,7 @@ const struct ath11k_hw_ops ipq5018_ops = {
+@@ -1189,6 +1213,7 @@ const struct ath11k_hw_ops ipq5018_ops =
  	.rx_desc_get_encrypt_type = ath11k_hw_qcn9074_rx_desc_get_encrypt_type,
  	.rx_desc_get_decap_type = ath11k_hw_qcn9074_rx_desc_get_decap_type,
  	.rx_desc_get_mesh_ctl = ath11k_hw_qcn9074_rx_desc_get_mesh_ctl,
@@ -445,11 +437,9 @@ index 21488e6..7c63d2f 100644
  	.rx_desc_get_ldpc_support = ath11k_hw_qcn9074_rx_desc_get_ldpc_support,
  	.rx_desc_get_mpdu_seq_ctl_vld = ath11k_hw_qcn9074_rx_desc_get_mpdu_seq_ctl_vld,
  	.rx_desc_get_mpdu_fc_valid = ath11k_hw_qcn9074_rx_desc_get_mpdu_fc_valid,
-diff --git a/drivers/net/wireless/ath/ath11k/hw.h b/drivers/net/wireless/ath/ath11k/hw.h
-index 43eabdd..6502fac 100644
 --- a/drivers/net/wireless/ath/ath11k/hw.h
 +++ b/drivers/net/wireless/ath/ath11k/hw.h
-@@ -270,6 +270,7 @@ struct ath11k_hw_ops {
+@@ -267,6 +267,7 @@ struct ath11k_hw_ops {
  	u32 (*rx_desc_get_encrypt_type)(struct hal_rx_desc *desc);
  	u8 (*rx_desc_get_decap_type)(struct hal_rx_desc *desc);
  	u8 (*rx_desc_get_mesh_ctl)(struct hal_rx_desc *desc);
@@ -457,22 +447,20 @@ index 43eabdd..6502fac 100644
  	bool (*rx_desc_get_ldpc_support)(struct hal_rx_desc *desc);
  	bool (*rx_desc_get_mpdu_seq_ctl_vld)(struct hal_rx_desc *desc);
  	bool (*rx_desc_get_mpdu_fc_valid)(struct hal_rx_desc *desc);
-diff --git a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
-index a2a9440..039559b 100644
 --- a/drivers/net/wireless/ath/ath11k/mac.c
 +++ b/drivers/net/wireless/ath/ath11k/mac.c
-@@ -10639,6 +10639,14 @@ static int ath11k_mac_op_sta_state(struct ieee80211_hw *hw,
- 						    power_type);
- 			}
+@@ -10458,6 +10458,14 @@ static int ath11k_mac_op_sta_state(struc
  		}
-+	} else if (old_state == IEEE80211_STA_AUTHORIZED &&
-+		   new_state == IEEE80211_STA_ASSOC) {
+ 	} else if (old_state == IEEE80211_STA_AUTHORIZED &&
+ 		   new_state == IEEE80211_STA_ASSOC) {
 +
 +		spin_lock_bh(&ar->ab->base_lock);
 +		peer = ath11k_peer_find(ar->ab, arvif->vdev_id, sta->addr);
 +		if (peer)
 +			peer->is_authorized = false;
 +		spin_unlock_bh(&ar->ab->base_lock);
- 	} else if (old_state == IEEE80211_STA_AUTHORIZED &&
- 		   new_state == IEEE80211_STA_ASSOC) {
++	} else if (old_state == IEEE80211_STA_AUTHORIZED &&
++		   new_state == IEEE80211_STA_ASSOC) {
  		spin_lock_bh(&ar->ab->base_lock);
+ 
+ 		peer = ath11k_peer_find(ar->ab, arvif->vdev_id, sta->addr);

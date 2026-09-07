@@ -22,6 +22,9 @@ Both are pairings rather than behaviour changes: the lock taken decides
 the release, and there is only one release that matches.
 
 Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
+---
+ drivers/net/wireless/ath/ath11k/nss.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/net/wireless/ath/ath11k/nss.c b/drivers/net/wireless/ath/ath11k/nss.c
 index 99daa9a..cc356ba 100644

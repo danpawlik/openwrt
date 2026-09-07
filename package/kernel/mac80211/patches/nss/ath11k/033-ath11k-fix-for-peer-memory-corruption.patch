@@ -1,12 +1,6 @@
-ath11k-fix-for-peer-memory-corruption
-
-Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
-
-diff --git a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
-index 37c35bf..52fca97 100644
 --- a/drivers/net/wireless/ath/ath11k/mac.c
 +++ b/drivers/net/wireless/ath/ath11k/mac.c
-@@ -4426,22 +4426,28 @@ static int ath11k_clear_peer_keys(struct ath11k_vif *arvif,
+@@ -4285,22 +4285,28 @@ static int ath11k_clear_peer_keys(struct
  	int ret;
  	int i;
  	u32 flags = 0;
@@ -41,7 +35,7 @@ index 37c35bf..52fca97 100644
  					 DISABLE_KEY, addr, flags);
  		if (ret < 0 && first_errno == 0)
  			first_errno = ret;
-@@ -4449,10 +4455,6 @@ static int ath11k_clear_peer_keys(struct ath11k_vif *arvif,
+@@ -4308,10 +4314,6 @@ static int ath11k_clear_peer_keys(struct
  		if (ret < 0)
  			ath11k_warn(ab, "failed to remove peer key %d: %d\n",
  				    i, ret);

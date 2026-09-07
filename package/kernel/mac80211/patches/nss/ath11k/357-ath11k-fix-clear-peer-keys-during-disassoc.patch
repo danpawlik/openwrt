@@ -15,11 +15,9 @@ Signed-off-by: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
  drivers/net/wireless/ath/ath11k/mac.c | 37 ++++++++++++++++++++---------------
  1 file changed, 21 insertions(+), 16 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
-index 300b4b3..41580c1 100644
 --- a/drivers/net/wireless/ath/ath11k/mac.c
 +++ b/drivers/net/wireless/ath/ath11k/mac.c
-@@ -5207,12 +5207,6 @@ static int ath11k_station_disassoc(struct ath11k *ar,
+@@ -5077,12 +5077,6 @@ static int ath11k_station_disassoc(struc
  			return ret;
  	}
  
@@ -32,7 +30,7 @@ index 300b4b3..41580c1 100644
  	return 0;
  }
  
-@@ -10581,6 +10575,17 @@ static int ath11k_mac_op_sta_state(struct ieee80211_hw *hw,
+@@ -10410,6 +10404,17 @@ static int ath11k_mac_op_sta_state(struc
  		arsta->bw = ath11k_mac_ieee80211_sta_bw_to_wmi(ar, sta);
  		arsta->bw_prev = arsta->bw;
  		spin_unlock_bh(&ar->data_lock);

@@ -17,8 +17,6 @@ Signed-off-by: Gautham Kumar Senthilkumaran <quic_gauthamk@quicinc.com>
  net/mac80211/tx.c                       |  14 +++
  1 files changed, 14 insertions(+)
 
-diff --git a/net/mac80211/tx.c b/net/mac80211/tx.c
-index 0529032..72a9f9b 100644
 --- a/net/mac80211/tx.c
 +++ b/net/mac80211/tx.c
 @@ -38,6 +38,9 @@
@@ -31,7 +29,7 @@ index 0529032..72a9f9b 100644
  /* misc utils */
  
  static __le16 ieee80211_duration(struct ieee80211_tx_data *tx,
-@@ -4385,6 +4388,8 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
+@@ -4319,6 +4322,8 @@ void __ieee80211_subif_start_xmit(struct
  	struct sta_info *sta;
  	struct sk_buff *next;
  	int len = skb->len;
@@ -40,7 +38,7 @@ index 0529032..72a9f9b 100644
  
  	if (unlikely(!ieee80211_sdata_running(sdata) || skb->len < ETH_HLEN)) {
  		kfree_skb(skb);
-@@ -4406,6 +4411,19 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
+@@ -4340,6 +4345,19 @@ void __ieee80211_subif_start_xmit(struct
  	if (IS_ERR(sta))
  		sta = NULL;
  

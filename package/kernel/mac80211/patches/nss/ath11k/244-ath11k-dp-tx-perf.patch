@@ -15,23 +15,6 @@ echo 1 > /sys/kernel/debug/ath11k/ipq8074\ hw2.0/stats_disable
 
 Signed-off-by: Sriram R <srirrama@codeaurora.org>
 Signed-off-by: P Praneesh <ppranees@codeaurora.org>
-[julius: initialize 'flags' from skb_cb in the tx completion path too -
- it was read uninitialized, so status-requested frames (EAPOL) could
- take the stats-disable fast free and never report their tx status.
- Bound the tx-completion service loop and the soc_dp_stats desc_na dump
- by DP_TCL_NUM_RING_MAX, like the other loops this patch converts.
- max_tx_ring counts submission rings and this patch raises it to
- DP_TCL_NUM_RING_MAX + 1 so TCL_CMD can carry tx, but dp->tx_ring[] -
- and with it tx_status, the idr and the per-ring completion srng - is
- only DP_TCL_NUM_RING_MAX wide, and TCL_CMD has no completion ring of
- its own; dp_tx already clamps its own tx_ring[] index for that reason.
- ath11k_core_pre_init() clamps max_tx_ring back only when NSS offload is
- on, so on the host datapath the service loop reached one past
- dp->tx_ring[], read a NULL tx_status and panicked in
- ath11k_dp_tx_completion_handler() as soon as a frame went out on the
- last CPU. desc_na[] is sized the same way, so the stats dump read past
- it and printed a bogus extra ring]
-Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 ---
  drivers/net/wireless/ath/ath11k/core.h  |   1 +
  drivers/net/wireless/ath/ath11k/dp.c    |   7 +-
@@ -41,11 +24,9 @@ Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
  drivers/net/wireless/ath/ath11k/mac.c   |   9 ++-
  6 files changed, 88 insertions(+), 58 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
-index 088b8fa..123ffe6 100644
 --- a/drivers/net/wireless/ath/ath11k/core.h
 +++ b/drivers/net/wireless/ath/ath11k/core.h
-@@ -125,6 +125,7 @@ static inline enum wme_ac ath11k_tid_to_ac(u32 tid)
+@@ -124,6 +124,7 @@ static inline enum wme_ac ath11k_tid_to_
  enum ath11k_skb_flags {
  	ATH11K_SKB_HW_80211_ENCAP = BIT(0),
  	ATH11K_SKB_CIPHER_SET = BIT(1),
@@ -53,7 +34,7 @@ index 088b8fa..123ffe6 100644
  };
  
  struct ath11k_skb_cb {
-@@ -960,10 +961,13 @@ struct ath11k_dp_ring_bp_stats {
+@@ -943,10 +944,13 @@ struct ath11k_dp_ring_bp_stats {
  struct ath11k_soc_dp_tx_err_stats {
  	/* TCL Ring Descriptor unavailable */
  	u32 desc_na[DP_TCL_NUM_RING_MAX];
@@ -67,38 +48,48 @@ index 088b8fa..123ffe6 100644
  	/* Tx failures due to NSS Tx error status */
  	atomic_t nss_tx_fail;
  };
-diff --git a/drivers/net/wireless/ath/ath11k/debugfs.c b/drivers/net/wireless/ath/ath11k/debugfs.c
-index 07de040..c2a69e6 100644
---- a/drivers/net/wireless/ath/ath11k/debugfs.c
-+++ b/drivers/net/wireless/ath/ath11k/debugfs.c
-@@ -710,10 +710,22 @@ static ssize_t ath11k_debugfs_dump_soc_dp_stats(struct file *file,
- 		len += scnprintf(buf + len, size - len, "ring%d: %u\n",
- 				 i, soc_stats->tx_err.desc_na[i]);
- 
-+	len += scnprintf(buf + len, size - len, "\nTCL Ring idr Failures:\n");
-+	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++)
-+		len += scnprintf(buf + len, size - len, "ring%d: %u\n",
-+				 i, soc_stats->tx_err.idr_na[i]);
-+
-+	len += scnprintf(buf + len, size - len, "\nMax Transmit Failures: %d\n",
-+			 atomic_read(&soc_stats->tx_err.max_fail));
-+
- 	len += scnprintf(buf + len, size - len,
- 			 "\nMisc Transmit Failures: %d\n",
- 			 atomic_read(&soc_stats->tx_err.misc_fail));
- 
-+	len += scnprintf(buf + len, size - len,
-+			 "\nNSS Transmit Failures: %d\n",
-+			 atomic_read(&soc_stats->tx_err.nss_tx_fail));
-+
- 	len += ath11k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
- 
- 	if (len > size)
-diff --git a/drivers/net/wireless/ath/ath11k/dp.c b/drivers/net/wireless/ath/ath11k/dp.c
-index f6e3c1f..552210d 100644
 --- a/drivers/net/wireless/ath/ath11k/dp.c
 +++ b/drivers/net/wireless/ath/ath11k/dp.c
-@@ -437,7 +437,7 @@ static int ath11k_dp_srng_common_setup(struct ath11k_base *ab)
+@@ -361,7 +361,7 @@ void ath11k_dp_stop_shadow_timers(struct
+ 	if (!ab->hw_params.supports_shadow_regs)
+ 		return;
+ 
+-	for (i = 0; i < ab->hw_params.max_tx_ring; i++)
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++)
+ 		ath11k_dp_shadow_stop_timer(ab, &ab->dp.tx_ring_timer[i]);
+ 
+ 	ath11k_dp_shadow_stop_timer(ab, &ab->dp.reo_cmd_timer);
+@@ -376,7 +376,7 @@ static void ath11k_dp_srng_common_cleanu
+ 	ath11k_dp_srng_cleanup(ab, &dp->wbm_desc_rel_ring);
+ 	ath11k_dp_srng_cleanup(ab, &dp->tcl_cmd_ring);
+ 	ath11k_dp_srng_cleanup(ab, &dp->tcl_status_ring);
+-	for (i = 0; i < ab->hw_params.max_tx_ring; i++) {
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++) {
+ 		ath11k_dp_srng_cleanup(ab, &dp->tx_ring[i].tcl_data_ring);
+ 		ath11k_dp_srng_cleanup(ab, &dp->tx_ring[i].tcl_comp_ring);
+ 	}
+@@ -410,6 +410,11 @@ static int ath11k_dp_srng_common_setup(s
+ 		goto err;
+ 	}
+ 
++	if (ab->hw_params.max_tx_ring > DP_TCL_NUM_RING_MAX) {
++		srng = &ab->hal.srng_list[dp->tcl_cmd_ring.ring_id];
++		ath11k_hal_tx_init_data_ring(ab, srng, HAL_TCL_CMD);
++	}
++
+ 	ret = ath11k_dp_srng_setup(ab, &dp->tcl_status_ring, HAL_TCL_STATUS,
+ 				   0, 0, DP_TCL_STATUS_RING_SIZE);
+ 	if (ret) {
+@@ -417,7 +422,7 @@ static int ath11k_dp_srng_common_setup(s
+ 		goto err;
+ 	}
+ 
+-	for (i = 0; i < ab->hw_params.max_tx_ring; i++) {
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++) {
+ 		tcl_num = ab->hw_params.hal_params->tcl2wbm_rbm_map[i].tcl_ring_num;
+ 		wbm_num = ab->hw_params.hal_params->tcl2wbm_rbm_map[i].wbm_ring_num;
+ 
+@@ -440,7 +445,7 @@ static int ath11k_dp_srng_common_setup(s
  		}
  
  		srng = &ab->hal.srng_list[dp->tx_ring[i].tcl_data_ring.ring_id];
@@ -107,11 +98,27 @@ index f6e3c1f..552210d 100644
  
  		ath11k_dp_shadow_init_timer(ab, &dp->tx_ring_timer[i],
  					    ATH11K_SHADOW_DP_TIMER_INTERVAL,
-diff --git a/drivers/net/wireless/ath/ath11k/dp_tx.c b/drivers/net/wireless/ath/ath11k/dp_tx.c
-index 1d95e0c..3f349ac 100644
+@@ -1054,7 +1059,7 @@ void ath11k_dp_free(struct ath11k_base *
+ 
+ 	ath11k_dp_reo_cmd_list_cleanup(ab);
+ 
+-	for (i = 0; i < ab->hw_params.max_tx_ring; i++) {
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++) {
+ 		spin_lock_bh(&dp->tx_ring[i].tx_idr_lock);
+ 		idr_for_each(&dp->tx_ring[i].txbuf_idr,
+ 			     ath11k_dp_tx_pending_cleanup, ab);
+@@ -1105,7 +1110,7 @@ int ath11k_dp_alloc(struct ath11k_base *
+ 
+ 	size = sizeof(struct hal_wbm_release_ring) * DP_TX_COMP_RING_SIZE;
+ 
+-	for (i = 0; i < ab->hw_params.max_tx_ring; i++) {
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++) {
+ 		idr_init(&dp->tx_ring[i].txbuf_idr);
+ 		spin_lock_init(&dp->tx_ring[i].tx_idr_lock);
+ 		dp->tx_ring[i].tcl_data_ring_id = i;
 --- a/drivers/net/wireless/ath/ath11k/dp_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
-@@ -135,28 +135,33 @@ int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
+@@ -135,28 +135,34 @@ int ath11k_dp_tx(struct ath11k *ar, stru
  	u32 ring_selector = 0;
  	u8 ring_map = 0;
  	bool tcl_ring_retry, is_diff_encap = false;
@@ -126,7 +133,7 @@ index 1d95e0c..3f349ac 100644
  		return -EOPNOTSUPP;
  
 -	pool_id = skb_get_queue_mapping(skb) & (ATH11K_HW_MAX_QUEUES - 1);
-+	max_tx_ring = num_tx_rings;
++	max_tx_ring = ab->hw_params.max_tx_ring;
  
 -	ring_selector = ab->hw_params.hw_ops->get_ring_selector(skb);
 +#ifdef CPTCFG_ATH11K_MEM_PROFILE_512M
@@ -141,10 +148,11 @@ index 1d95e0c..3f349ac 100644
  tcl_ring_sel:
  	tcl_ring_retry = false;
  
--	ti.ring_id = ring_selector % num_tx_rings;
+-	ti.ring_id = ring_selector % ab->hw_params.max_tx_ring;
 -	ti.rbm_id = ab->hw_params.hal_params->tcl2wbm_rbm_map[ti.ring_id].rbm_id;
-+	ring_id = ring_selector % num_tx_rings;
-+	tcl_ring_id = ring_id;
++	ring_id = ring_selector % max_tx_ring;
++	tcl_ring_id = (ring_id == DP_TCL_NUM_RING_MAX) ?
++				  DP_TCL_NUM_RING_MAX - 1 : ring_id;
  
 -	ring_map |= BIT(ti.ring_id);
 +	ring_map |= BIT(ring_id);
@@ -155,16 +163,19 @@ index 1d95e0c..3f349ac 100644
  
  	spin_lock_bh(&tx_ring->tx_idr_lock);
  	ret = idr_alloc(&tx_ring->txbuf_idr, skb, 0,
-@@ -166,7 +171,7 @@ tcl_ring_sel:
+@@ -164,9 +170,9 @@ tcl_ring_sel:
+ 	spin_unlock_bh(&tx_ring->tx_idr_lock);
+ 
  	if (unlikely(ret < 0)) {
- 		if (ring_map == (BIT(num_tx_rings) - 1) ||
+-		if (ring_map == (BIT(ab->hw_params.max_tx_ring) - 1) ||
++		if (ring_map == (BIT(max_tx_ring) - 1) ||
  		    !ab->hw_params.tcl_ring_retry) {
 -			atomic_inc(&ab->soc_stats.tx_err.misc_fail);
 +			ab->soc_stats.tx_err.idr_na[tcl_ring_id]++;
  			return -ENOSPC;
  		}
  
-@@ -277,6 +282,11 @@ tcl_ring_sel:
+@@ -277,6 +283,11 @@ tcl_ring_sel:
  		ti.encrypt_type = HAL_ENCRYPT_TYPE_OPEN;
  	}
  
@@ -176,7 +187,7 @@ index 1d95e0c..3f349ac 100644
  	ti.paddr = dma_map_single(ab->dev, skb->data, skb->len, DMA_TO_DEVICE);
  	if (unlikely(dma_mapping_error(ab->dev, ti.paddr))) {
  		atomic_inc(&ab->soc_stats.tx_err.misc_fail);
-@@ -285,13 +295,13 @@ tcl_ring_sel:
+@@ -285,13 +296,13 @@ tcl_ring_sel:
  		goto fail_remove_idr;
  	}
  
@@ -195,7 +206,7 @@ index 1d95e0c..3f349ac 100644
  	tcl_ring = &ab->hal.srng_list[hal_ring_id];
  
  	spin_lock_bh(&tcl_ring->lock);
-@@ -304,7 +314,7 @@ tcl_ring_sel:
+@@ -304,7 +315,7 @@ tcl_ring_sel:
  		 * desc because the desc is directly enqueued onto hw queue.
  		 */
  		ath11k_hal_srng_access_end(ab, tcl_ring);
@@ -204,7 +215,18 @@ index 1d95e0c..3f349ac 100644
  		spin_unlock_bh(&tcl_ring->lock);
  		ret = -ENOMEM;
  
-@@ -325,17 +335,17 @@ tcl_ring_sel:
+@@ -313,8 +324,8 @@ tcl_ring_sel:
+ 		 * checking this ring earlier for each pkt tx.
+ 		 * Restart ring selection if some rings are not checked yet.
+ 		 */
+-		if (unlikely(ring_map != (BIT(ab->hw_params.max_tx_ring)) - 1) &&
+-		    ab->hw_params.tcl_ring_retry && ab->hw_params.max_tx_ring > 1) {
++		if (unlikely(ring_map != (BIT(max_tx_ring)) - 1) &&
++		    ab->hw_params.tcl_ring_retry && max_tx_ring > 1) {
+ 			tcl_ring_retry = true;
+ 			ring_selector++;
+ 		}
+@@ -325,17 +336,17 @@ tcl_ring_sel:
  	ath11k_hal_tx_cmd_desc_setup(ab, hal_tcl_desc +
  					 sizeof(struct hal_tlv_hdr), &ti);
  
@@ -213,7 +235,7 @@ index 1d95e0c..3f349ac 100644
  	ath11k_hal_srng_access_end(ab, tcl_ring);
  
 -	ath11k_dp_shadow_start_timer(ab, tcl_ring, &dp->tx_ring_timer[ti.ring_id]);
-+	ath11k_dp_shadow_start_timer(ab, tcl_ring, &dp->tx_ring_timer[tcl_ring_id]);
++	ath11k_dp_shadow_start_timer(ab, tcl_ring, &dp->tx_ring_timer[ti.buf_id]);
  
  	spin_unlock_bh(&tcl_ring->lock);
  
@@ -225,7 +247,7 @@ index 1d95e0c..3f349ac 100644
  
  	return 0;
  
-@@ -382,7 +392,6 @@ static void ath11k_dp_tx_free_txbuf(struct ath11k_base *ab, u8 mac_id,
+@@ -382,7 +393,6 @@ static void ath11k_dp_tx_free_txbuf(stru
  	ar = ab->pdevs[mac_id].ar;
  	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
  		wake_up(&ar->dp.tx_empty_waitq);
@@ -233,7 +255,7 @@ index 1d95e0c..3f349ac 100644
  }
  
  static void
-@@ -414,12 +423,25 @@ ath11k_dp_tx_htt_tx_complete_buf(struct ath11k_base *ab,
+@@ -414,12 +424,25 @@ ath11k_dp_tx_htt_tx_complete_buf(struct
  
  	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
  		wake_up(&ar->dp.tx_empty_waitq);
@@ -262,11 +284,10 @@ index 1d95e0c..3f349ac 100644
  		return;
  	}
  
-@@ -647,6 +669,21 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -647,6 +670,20 @@ static void ath11k_dp_tx_complete_msdu(s
  
  	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
  
-+	flags = skb_cb->flags;
 +	/* Free skb here if stats is disabled */
 +	if (ab->stats_disable && !(flags & ATH11K_SKB_TX_STATUS)) {
 +		if (msdu->destructor) {
@@ -284,7 +305,7 @@ index 1d95e0c..3f349ac 100644
  	if (unlikely(!rcu_access_pointer(ab->pdevs_active[ar->pdev_idx]))) {
  		ieee80211_free_txskb(ar->hw, msdu);
  		return;
-@@ -705,7 +742,7 @@ static void ath11k_dp_tx_complete_msdu(struct ath11k *ar,
+@@ -705,7 +742,7 @@ static void ath11k_dp_tx_complete_msdu(s
  
  	spin_lock_bh(&ab->base_lock);
  	peer = ath11k_peer_find_by_id(ab, ts->peer_id);
@@ -293,7 +314,7 @@ index 1d95e0c..3f349ac 100644
  		ath11k_dbg(ab, ATH11K_DBG_DATA,
  			   "dp_tx: failed to find the peer with peer_id %d\n",
  			    ts->peer_id);
-@@ -761,19 +798,36 @@ static inline void ath11k_dp_tx_status_parse(struct ath11k_base *ab,
+@@ -761,19 +798,36 @@ static inline void ath11k_dp_tx_status_p
  		ts->rate_stats = 0;
  }
  
@@ -333,7 +354,7 @@ index 1d95e0c..3f349ac 100644
  
  	spin_lock_bh(&status_ring->lock);
  
-@@ -788,33 +842,28 @@ void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id)
+@@ -788,33 +842,28 @@ void ath11k_dp_tx_completion_handler(str
  
  	ath11k_hal_srng_dst_invalidate_entry(ab, status_ring, valid_entries);
  
@@ -367,21 +388,22 @@ index 1d95e0c..3f349ac 100644
 -	while (ATH11K_TX_COMPL_NEXT(tx_ring->tx_status_tail) != tx_ring->tx_status_head) {
 -		struct hal_wbm_release_ring *tx_status;
 -		u32 desc_id;
+-
+-		tx_ring->tx_status_tail =
+-			ATH11K_TX_COMPL_NEXT(tx_ring->tx_status_tail);
+-		tx_status = &tx_ring->tx_status[tx_ring->tx_status_tail];
 +	if (atomic_sub_return(count, &ab->num_max_allowed) < 0) {
 +		ath11k_warn(ab, "tx completion mismatch count %d ring id %d max_num %d\n",
 +			    count, tx_ring->tcl_data_ring_id,
 +			    atomic_read(&ab->num_max_allowed));
 +	}
- 
--		tx_ring->tx_status_tail =
--			ATH11K_TX_COMPL_NEXT(tx_ring->tx_status_tail);
--		tx_status = &tx_ring->tx_status[tx_ring->tx_status_tail];
++
 +	while (count--) {
 +		tx_status = &tx_ring->tx_status[i++];
  		ath11k_dp_tx_status_parse(ab, tx_status, &ts);
  
  		desc_id = FIELD_GET(BUFFER_ADDR_INFO1_SW_COOKIE,
-@@ -847,7 +896,6 @@ void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id)
+@@ -847,7 +896,6 @@ void ath11k_dp_tx_completion_handler(str
  			wake_up(&ar->dp.tx_empty_waitq);
  
  		ath11k_dp_tx_complete_msdu(ar, msdu, &ts);
@@ -389,11 +411,129 @@ index 1d95e0c..3f349ac 100644
  	}
  }
  
-diff --git a/drivers/net/wireless/ath/ath11k/hal_tx.c b/drivers/net/wireless/ath/ath11k/hal_tx.c
-index b7e9b1c..c860105 100644
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -6617,12 +6617,22 @@ static void ath11k_mac_op_tx(struct ieee
+ 	if (control->sta)
+ 		arsta = ath11k_sta_to_arsta(control->sta);
+ 
++	/* Must call mac80211 tx status handler, else when stats is disabled we free
++	 * the skb from driver. Own tx packets on monitor will also be disabled.
++	 */
++	if ((info->flags & (IEEE80211_TX_CTL_REQ_TX_STATUS | IEEE80211_TX_INTFL_NL80211_FRAME_TX)) ||
++	    info->status_data || vif->type == NL80211_IFTYPE_MESH_POINT ||
++	    test_bit(ATH11K_FLAG_MONITOR_VDEV_CREATED, &ar->monitor_flags))
++		skb_cb->flags |= ATH11K_SKB_TX_STATUS;
++
+ 	if (ar->ab->nss.enabled)
+ 		ret = ath11k_nss_tx(arvif, skb);
+ 	else
+ 		ret = ath11k_dp_tx(ar, arvif, arsta, skb);
++
+ 	if (unlikely(ret)) {
+-		ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
++		if (!ar->ab->nss.enabled && ret != -ENOSPC && ret != -ENOMEM)
++			ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
+ 		ieee80211_free_txskb(ar->hw, skb);
+ 		return;
+ 	}
+@@ -7595,7 +7605,7 @@ err_vdev_del:
+ 	idr_for_each(&ar->txmgmt_idr,
+ 		     ath11k_mac_vif_txmgmt_idr_remove, vif);
+ 
+-	for (i = 0; i < ab->hw_params.max_tx_ring; i++) {
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++) {
+ 		spin_lock_bh(&ab->dp.tx_ring[i].tx_idr_lock);
+ 		idr_for_each(&ab->dp.tx_ring[i].txbuf_idr,
+ 			     ath11k_mac_vif_unref, vif);
+--- a/drivers/net/wireless/ath/ath11k/debugfs.c
++++ b/drivers/net/wireless/ath/ath11k/debugfs.c
+@@ -713,10 +713,22 @@ static ssize_t ath11k_debugfs_dump_soc_d
+ 		len += scnprintf(buf + len, size - len, "ring%d: %u\n",
+ 				 i, soc_stats->tx_err.desc_na[i]);
+ 
++	len += scnprintf(buf + len, size - len, "\nTCL Ring idr Failures:\n");
++	for (i = 0; i < DP_TCL_NUM_RING_MAX; i++)
++		len += scnprintf(buf + len, size - len, "ring%d: %u\n",
++				 i, soc_stats->tx_err.idr_na[i]);
++
++	len += scnprintf(buf + len, size - len, "\nMax Transmit Failures: %d\n",
++			 atomic_read(&soc_stats->tx_err.max_fail));
++
+ 	len += scnprintf(buf + len, size - len,
+ 			 "\nMisc Transmit Failures: %d\n",
+ 			 atomic_read(&soc_stats->tx_err.misc_fail));
+ 
++	len += scnprintf(buf + len, size - len,
++			 "\nNSS Transmit Failures: %d\n",
++			 atomic_read(&soc_stats->tx_err.nss_tx_fail));
++
+ 	len += ath11k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
+ 
+ 	if (len > size)
+--- a/drivers/net/wireless/ath/ath11k/core.c
++++ b/drivers/net/wireless/ath/ath11k/core.c
+@@ -108,7 +108,8 @@ static struct ath11k_hw_params ath11k_hw
+ 		.supports_regdb = false,
+ 		.fix_l1ss = true,
+ 		.credit_flow = false,
+-		.max_tx_ring = DP_TCL_NUM_RING_MAX,
++		/* In addition to TCL ring use TCL_CMD ring also for tx */
++		.max_tx_ring = DP_TCL_NUM_RING_MAX + 1,
+ 		.hal_params = &ath11k_hw_hal_params_ipq8074,
+ 		.supports_dynamic_smps_6ghz = false,
+ 		.alloc_cacheable_memory = true,
+@@ -193,7 +194,8 @@ static struct ath11k_hw_params ath11k_hw
+ 		.supports_regdb = false,
+ 		.fix_l1ss = true,
+ 		.credit_flow = false,
+-		.max_tx_ring = DP_TCL_NUM_RING_MAX,
++		/* In addition to TCL ring use TCL_CMD ring also for tx */
++		.max_tx_ring = DP_TCL_NUM_RING_MAX + 1,
+ 		.hal_params = &ath11k_hw_hal_params_ipq8074,
+ 		.supports_dynamic_smps_6ghz = false,
+ 		.alloc_cacheable_memory = true,
+@@ -368,7 +370,8 @@ static struct ath11k_hw_params ath11k_hw
+ 		.supports_regdb = false,
+ 		.fix_l1ss = true,
+ 		.credit_flow = false,
+-		.max_tx_ring = DP_TCL_NUM_RING_MAX,
++		/* In addition to TCL ring use TCL_CMD ring also for tx */
++		.max_tx_ring = DP_TCL_NUM_RING_MAX + 1,
+ 		.hal_params = &ath11k_hw_hal_params_ipq8074,
+ 		.supports_dynamic_smps_6ghz = true,
+ 		.alloc_cacheable_memory = true,
+@@ -2734,6 +2737,9 @@ int ath11k_core_pre_init(struct ath11k_b
+ 	if (nss_offload)
+ 		ab->nss.stats_enabled = 1;
+ 
++	if (ab->nss.enabled && ab->hw_params.max_tx_ring > DP_TCL_NUM_RING_MAX)
++		ab->hw_params.max_tx_ring = DP_TCL_NUM_RING_MAX;
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL(ath11k_core_pre_init);
+--- a/drivers/net/wireless/ath/ath11k/hal_tx.h
++++ b/drivers/net/wireless/ath/ath11k/hal_tx.h
+@@ -18,7 +18,7 @@
+ 
+ struct hal_tx_info {
+ 	u16 meta_data_flags; /* %HAL_TCL_DATA_CMD_INFO0_META_ */
+-	u8 ring_id;
++	u8 buf_id;
+ 	u32 desc_id;
+ 	enum hal_tcl_desc_type type;
+ 	enum hal_tcl_encap_type encap_type;
+@@ -70,5 +70,5 @@ int ath11k_hal_reo_cmd_send(struct ath11
+ 			    enum hal_reo_cmd_type type,
+ 			    struct ath11k_hal_reo_cmd *cmd);
+ void ath11k_hal_tx_init_data_ring(struct ath11k_base *ab,
+-				  struct hal_srng *srng);
++				  struct hal_srng *srng, enum hal_ring_type type);
+ #endif
 --- a/drivers/net/wireless/ath/ath11k/hal_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/hal_tx.c
-@@ -37,18 +37,18 @@ static const u8 dscp_tid_map[DSCP_TID_MAP_TBL_ENTRY_SIZE] = {
+@@ -37,18 +37,18 @@ static const u8 dscp_tid_map[DSCP_TID_MA
  void ath11k_hal_tx_cmd_desc_setup(struct ath11k_base *ab, void *cmd,
  				  struct hal_tx_info *ti)
  {
@@ -418,7 +558,7 @@ index b7e9b1c..c860105 100644
  		FIELD_PREP(HAL_TCL_DATA_CMD_INFO0_DESC_TYPE, ti->type) |
  		FIELD_PREP(HAL_TCL_DATA_CMD_INFO0_ENCAP_TYPE, ti->encap_type) |
  		FIELD_PREP(HAL_TCL_DATA_CMD_INFO0_ENCRYPT_TYPE,
-@@ -60,24 +60,26 @@ void ath11k_hal_tx_cmd_desc_setup(struct ath11k_base *ab, void *cmd,
+@@ -60,24 +60,26 @@ void ath11k_hal_tx_cmd_desc_setup(struct
  		FIELD_PREP(HAL_TCL_DATA_CMD_INFO0_CMD_NUM,
  			   ti->meta_data_flags);
  
@@ -450,7 +590,7 @@ index b7e9b1c..c860105 100644
  }
  
  void ath11k_hal_tx_set_dscp_tid_map(struct ath11k_base *ab, int id)
-@@ -137,7 +139,9 @@ void ath11k_hal_tx_set_dscp_tid_map(struct ath11k_base *ab, int id)
+@@ -137,7 +139,9 @@ void ath11k_hal_tx_set_dscp_tid_map(stru
  			   ctrl_reg_val);
  }
  
@@ -461,7 +601,7 @@ index b7e9b1c..c860105 100644
  {
  	struct hal_srng_params params;
  	struct hal_tlv_hdr *tlv;
-@@ -146,7 +150,7 @@ void ath11k_hal_tx_init_data_ring(struct ath11k_base *ab, struct hal_srng *srng)
+@@ -146,7 +150,7 @@ void ath11k_hal_tx_init_data_ring(struct
  
  	memset(&params, 0, sizeof(params));
  
@@ -470,51 +610,3 @@ index b7e9b1c..c860105 100644
  	ath11k_hal_srng_get_params(ab, srng, &params);
  	desc = (u8 *)params.ring_base_vaddr;
  
-diff --git a/drivers/net/wireless/ath/ath11k/hal_tx.h b/drivers/net/wireless/ath/ath11k/hal_tx.h
-index f2dc6e2..e072c79 100644
---- a/drivers/net/wireless/ath/ath11k/hal_tx.h
-+++ b/drivers/net/wireless/ath/ath11k/hal_tx.h
-@@ -18,7 +18,7 @@
- 
- struct hal_tx_info {
- 	u16 meta_data_flags; /* %HAL_TCL_DATA_CMD_INFO0_META_ */
--	u8 ring_id;
-+	u8 buf_id;
- 	u32 desc_id;
- 	enum hal_tcl_desc_type type;
- 	enum hal_tcl_encap_type encap_type;
-@@ -70,5 +70,5 @@ int ath11k_hal_reo_cmd_send(struct ath11k_base *ab, struct hal_srng *srng,
- 			    enum hal_reo_cmd_type type,
- 			    struct ath11k_hal_reo_cmd *cmd);
- void ath11k_hal_tx_init_data_ring(struct ath11k_base *ab,
--				  struct hal_srng *srng);
-+				  struct hal_srng *srng, enum hal_ring_type type);
- #endif
-diff --git a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
-index 039559b..5c76b3f 100644
---- a/drivers/net/wireless/ath/ath11k/mac.c
-+++ b/drivers/net/wireless/ath/ath11k/mac.c
-@@ -6938,12 +6938,22 @@ static void ath11k_mac_op_tx(struct ieee80211_hw *hw,
- 	if (control->sta)
- 		arsta = ath11k_sta_to_arsta(control->sta);
- 
-+	/* Must call mac80211 tx status handler, else when stats is disabled we free
-+	 * the skb from driver. Own tx packets on monitor will also be disabled.
-+	 */
-+	if ((info->flags & (IEEE80211_TX_CTL_REQ_TX_STATUS | IEEE80211_TX_INTFL_NL80211_FRAME_TX)) ||
-+	    info->status_data || vif->type == NL80211_IFTYPE_MESH_POINT ||
-+	    test_bit(ATH11K_FLAG_MONITOR_VDEV_CREATED, &ar->monitor_flags))
-+		skb_cb->flags |= ATH11K_SKB_TX_STATUS;
-+
- 	if (ar->ab->nss.enabled)
- 		ret = ath11k_nss_tx(arvif, skb);
- 	else
- 		ret = ath11k_dp_tx(ar, arvif, arsta, skb);
-+
- 	if (unlikely(ret)) {
--		ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
-+		if (!ar->ab->nss.enabled && ret != -ENOSPC && ret != -ENOMEM)
-+			ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
- 		ieee80211_free_txskb(ar->hw, skb);
- 		return;
- 	}

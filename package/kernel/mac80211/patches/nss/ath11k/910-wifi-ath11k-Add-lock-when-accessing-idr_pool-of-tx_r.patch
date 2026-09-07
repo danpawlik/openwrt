@@ -15,11 +15,9 @@ Signed-off-by: Aishwarya R <quic_aisr@quicinc.com>
  drivers/net/wireless/ath/ath11k/dp_tx.c | 14 +++++++++++---
  1 file changed, 11 insertions(+), 3 deletions(-)
 
-diff --git a/drivers/net/wireless/ath/ath11k/dp_tx.c b/drivers/net/wireless/ath/ath11k/dp_tx.c
-index 342a3d0..3364277 100644
 --- a/drivers/net/wireless/ath/ath11k/dp_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
-@@ -362,8 +362,10 @@ fail_remove_idr:
+@@ -348,8 +348,10 @@ fail_remove_idr:
  	if (ti.pkt_offset)
  		skb_pull(skb, ti.pkt_offset);
  
@@ -30,7 +28,7 @@ index 342a3d0..3364277 100644
  
  	if (tcl_ring_retry)
  		goto tcl_ring_sel;
-@@ -379,12 +381,14 @@ static void ath11k_dp_tx_free_txbuf(struct ath11k_base *ab, u8 mac_id,
+@@ -365,12 +367,14 @@ static void ath11k_dp_tx_free_txbuf(stru
  	struct sk_buff *msdu = NULL;
  	struct ath11k_skb_cb *skb_cb;
  
@@ -45,7 +43,7 @@ index 342a3d0..3364277 100644
  
  	if (unlikely(!msdu)) {
  		ath11k_warn(ab, "tx completion for unknown msdu_id %d\n",
-@@ -416,12 +420,14 @@ ath11k_dp_tx_htt_tx_complete_buf(struct ath11k_base *ab,
+@@ -402,12 +406,14 @@ ath11k_dp_tx_htt_tx_complete_buf(struct
  	u32 msdu_id = ts->msdu_id;
  	u8 flags;
  
@@ -60,7 +58,7 @@ index 342a3d0..3364277 100644
  
  	if (unlikely(!msdu)) {
  		ath11k_warn(ab, "htt tx completion for unknown msdu_id %d\n",
-@@ -904,12 +910,14 @@ void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id)
+@@ -893,12 +899,14 @@ void ath11k_dp_tx_completion_handler(str
  			continue;
  		}
  

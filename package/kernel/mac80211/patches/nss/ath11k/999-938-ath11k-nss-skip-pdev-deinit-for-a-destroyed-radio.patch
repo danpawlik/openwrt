@@ -24,6 +24,9 @@ interface number and context lived in the ath11k that ath11k_mac_destroy()
 released - so return early and let the teardown loop account for it.
 
 Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
+---
+ drivers/net/wireless/ath/ath11k/nss.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
 
 diff --git a/drivers/net/wireless/ath/ath11k/nss.c b/drivers/net/wireless/ath/ath11k/nss.c
 index b8b52f6..a38516d 100644
