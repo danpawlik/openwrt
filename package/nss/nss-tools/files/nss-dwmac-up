@@ -61,8 +61,9 @@ wifi_load_now() {
 
   [ "$WIFI_OFFLOAD" = "1" ] || return 0        # the service already loaded it
   grep -q '^ath11k_ahb ' /proc/modules && return 0  # someone got there first
-  # NB: the guard is on ath11k_ahb, not ath11k - kmodloader loads the core
-  # module at boot; it is the _ahb probe that binds the radios.
+  # NB: the guard is on ath11k_ahb, not ath11k - the core module may be in
+  # already (a service restart, or a build without this package); it is the
+  # _ahb probe that binds the radios, so that is what must not happen twice.
   # Best-effort from here on, and it has to be: this function also runs on
   # the failure path, where the whole point is to get the radios up on the
   # host after the takeover did not happen. The script runs under 'set -e',

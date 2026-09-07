@@ -339,8 +339,17 @@ define KernelPackage/ath11k
   FILES:=$(PKG_BUILD_DIR)/drivers/soc/qcom/qmi_helpers.ko \
   $(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k.ko
 ifdef CONFIG_ATH11K_NSS_SUPPORT
+# ipq50xx: the 'nss' service of nss-tools-dwmac loads ath11k itself, after
+# the firmware plane is armed. Autoloading it here means kmodloader probes
+# the radios with nss_offload=1 about fourteen seconds before the core is
+# up; ath11k_nss_setup() then fails with -EINVAL and the radios stay on the
+# host path for the rest of the boot, or the Q6 wedges outright ("failed to
+# wait wlan mode request (mode 4): -110"). On multipd IPQ5018 there is no
+# rmmod to recover with. Reported by @danpawlik on the forum.
+ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),y)
   AUTOLOAD:=$(call AutoProbe,ath11k)
   MODPARAMS.ath11k:=nss_offload=1 frame_mode=2
+endif
 endif
 endef
 
@@ -431,7 +440,10 @@ define KernelPackage/ath11k-ahb
   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
   DEPENDS+= @TARGET_qualcommax +kmod-ath11k +kmod-qrtr-smd
   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k_ahb.ko
+# Loaded by the 'nss' service on ipq50xx, not at boot - see kmod-ath11k.
+ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),y)
   AUTOLOAD:=$(call AutoProbe,ath11k_ahb)
+endif
 endef
 
 define KernelPackage/ath11k-ahb/description
