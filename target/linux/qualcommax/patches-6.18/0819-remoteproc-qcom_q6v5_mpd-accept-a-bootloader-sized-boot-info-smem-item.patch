@@ -12,7 +12,7 @@ Based on the fix Hostle posted in the OpenWrt forum (t/253014 #69).
 
 --- a/drivers/remoteproc/qcom_q6v5_mpd.c
 +++ b/drivers/remoteproc/qcom_q6v5_mpd.c
-@@ -324,12 +324,22 @@
+@@ -324,12 +324,22 @@ static int share_upd_bootinfo_to_q6(stru
  	}
  
  	ptr = qcom_smem_get(REMOTE_PID, UPD_BOOT_INFO_SMEM_ID, &size);

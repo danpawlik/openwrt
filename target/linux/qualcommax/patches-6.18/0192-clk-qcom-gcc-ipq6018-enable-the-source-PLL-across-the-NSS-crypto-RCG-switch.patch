@@ -21,10 +21,8 @@ for and what the other qcom generators in this situation carry.
 
 Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 ---
-Index: linux-6.18.44/drivers/clk/qcom/gcc-ipq6018.c
-===================================================================
---- linux-6.18.44.orig/drivers/clk/qcom/gcc-ipq6018.c
-+++ linux-6.18.44/drivers/clk/qcom/gcc-ipq6018.c
+--- a/drivers/clk/qcom/gcc-ipq6018.c
++++ b/drivers/clk/qcom/gcc-ipq6018.c
 @@ -971,6 +971,12 @@ static struct clk_rcg2 nss_crypto_clk_sr
  		.name = "nss_crypto_clk_src",
  		.parent_data = gcc_xo_nss_crypto_pll_gpll0,
