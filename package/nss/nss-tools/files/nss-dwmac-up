@@ -56,6 +56,39 @@ fi
 WIFI_OFFLOAD="$(uci -q get nss.general.wifi_offload)"
 [ "$WIFI_OFFLOAD" = "1" ] || WIFI_OFFLOAD=0
 
+# Size the firmware's packet-buffer pools. This has to happen after the arm,
+# because the sysctl handler DMA-maps through the core's struct device: the
+# driver refuses the write with -EAGAIN until the core reports INITIALIZED
+# (feed patch 0142 - before it, the same write oopsed the kernel, reported by
+# @danpawlik), and the service's own early call at boot always lands too soon.
+#
+# It is not optional. Without extra_pbuf_core0 the default pool stays around
+# 10k buffers instead of ~29k, the firmware starts failing allocations by the
+# hundred thousand, and it drops the acceleration rules almost as fast as ECM
+# creates them - measured on a Xunison D50 by LS3434: 6156 rules created and
+# 6032 flushed, 90 % of packets excepted to the host, CPU pegged. Sizing the
+# pools took the same board to 2.8 M hash hits and 338 rules.
+#
+# Until now this was called only from the Wi-Fi offload path, so every board
+# that leaves nss.general.wifi_offload at 0 - which is every board except the
+# GL-B3000 - ran the firmware on default pools.
+nss_core_ready() { [ -r /sys/kernel/debug/qca-nss-drv/stats/n2h ]; }
+
+PBUF_TUNED=0
+pbuf_tune() {
+  if [ "$PBUF_TUNED" = 1 ]; then
+    return 0
+  fi
+  if poll_until 30 nss_core_ready; then
+    /etc/init.d/qca-nss-pbuf start >/dev/null 2>&1 || true
+    PBUF_TUNED=1
+    echo "pbuf pools sized (extra_pbuf_core0=$(sysctl -n dev.nss.n2hcfg.extra_pbuf_core0 2>/dev/null))"
+  else
+    echo "WARN: NSS core not ready after 30s - pbuf pools stay at their defaults"
+  fi
+  return 0
+}
+
 wifi_load_now() {
   local offload="$1"
 
@@ -67,13 +100,18 @@ wifi_load_now() {
   # Best-effort from here on, and it has to be: this function also runs on
   # the failure path, where the whole point is to get the radios up on the
   # host after the takeover did not happen. The script runs under 'set -e',
-  # and qca-nss-pbuf exits 1 whenever Wi-Fi offload is off - so without the
-  # guards below that init call kills us before ath11k_ahb is ever loaded,
-  # and the board comes up with no radios at all (measured).
+  # so every step here has to be unable to kill us before ath11k_ahb is
+  # loaded - otherwise the board comes up with no radios at all (measured).
   modprobe ath11k 2>/dev/null || true
   [ -w /sys/module/ath11k/parameters/nss_offload ] &&
     echo "$offload" > /sys/module/ath11k/parameters/nss_offload
-  /etc/init.d/qca-nss-pbuf start >/dev/null 2>&1 || true
+  # Pools before the radios bind: each offloaded radio pins ~4096 payloads in
+  # its RXDMA ring out of the shared N2H pool (E177). Only on the armed path -
+  # this function also runs after a failed takeover, where there is no core to
+  # wait for and the whole point is to get the radios up on the host quickly.
+  if [ "$offload" = 1 ]; then
+    pbuf_tune
+  fi
   modprobe ath11k_ahb 2>/dev/null || true
   echo "ath11k loaded on the $( [ "$offload" = 1 ] && echo NSS || echo host ) path"
 }
@@ -87,6 +125,11 @@ poll_until 15 fw_started || {
 
 # The core is up: now ath11k can register wifili and get INITIALIZED.
 wifi_load_now 1
+
+# On the Wi-Fi offload path the call above already did this; on every other
+# path wifi_load_now returned early and this is the only chance to size the
+# pools after the arm.
+pbuf_tune
 
 # Only now teach the firmware the VLANs: on load, vlan-mgr's netdevice
 # notifier replays NETDEV_REGISTER for every existing netdev, so it

@@ -41,7 +41,10 @@ wifi_load() {
 
 	modprobe ath11k 2>/dev/null
 	[ -w $NSSOFF ] && echo "$offload" > $NSSOFF
-	/etc/init.d/qca-nss-pbuf start >/dev/null 2>&1
+	# No pbuf tuning here: the NSS core is not up at this point in boot, so
+	# the driver refuses the sysctl with -EAGAIN (feed patch 0142) and the
+	# pools would silently stay at their defaults. nss-dwmac-up sizes them
+	# after the arm, on every path.
 	modprobe ath11k_ahb 2>/dev/null
 }
 
