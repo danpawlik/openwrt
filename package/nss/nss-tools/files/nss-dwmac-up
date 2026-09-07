@@ -78,6 +78,11 @@ poll_until 15 fw_started || {
   exit 1
 }
 
+# Glue "started" only means the GMAC DMA is parked; the NSS core may still be
+# booting. pbuf tuning DMA-maps through nss_ctx->dev and panics if that is NULL.
+nss_core_ready() { [ -r /sys/kernel/debug/qca-nss-drv/stats/n2h ]; }
+poll_until 30 nss_core_ready || echo "WARN: NSS core n2h stats not ready after 30s"
+
 # The core is up: now ath11k can register wifili and get INITIALIZED.
 wifi_load_now 1
 

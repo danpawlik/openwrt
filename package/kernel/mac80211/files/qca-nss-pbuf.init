@@ -30,6 +30,25 @@ get_num_cpus() {
   echo "${num_cpus:-1}"
 }
 
+# The sysctl tree under dev.nss.n2hcfg exists as soon as qca-nss-drv loads,
+# but extra_pbuf_core0 DMA mapping needs a fully booted NSS core (nss_ctx->dev
+# set). On ipq50xx the glue can report phys_if started before that finishes.
+nss_core_ready() {
+  [ -r /sys/kernel/debug/qca-nss-drv/stats/n2h ]
+}
+
+wait_nss_core_ready() {
+  local i=0
+
+  nss_core_ready && return 0
+  while [ "$i" -lt 30 ]; do
+    i=$((i + 1))
+    sleep 1
+    nss_core_ready && return 0
+  done
+  return 1
+}
+
 apply_sysctl() {
   [ "$(sysctl -n -e dev.nss.general.redirect)" -eq 0 ] && /etc/init.d/qca-nss-ecm start
 
@@ -74,6 +93,11 @@ apply_nss_config() {
 
   [ ! -d "/proc/sys/dev/nss/rps" ] && {
     logger -s -t $NAME -p user.error "NSS driver not loaded or disabled! Exiting... "
+    exit 1
+  }
+
+  wait_nss_core_ready || {
+    logger -s -t $NAME -p user.error "NSS core not ready for pbuf tuning (no n2h stats) - skipping"
     exit 1
   }
 

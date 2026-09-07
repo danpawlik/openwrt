@@ -339,8 +339,14 @@ define KernelPackage/ath11k
   FILES:=$(PKG_BUILD_DIR)/drivers/soc/qcom/qmi_helpers.ko \
   $(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k.ko
 ifdef CONFIG_ATH11K_NSS_SUPPORT
+ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),)
+  # ipq50xx: the nss service loads ath11k after the wired plane is armed.
+  # Boot autoload with nss_offload=1 races the deferred NSS core probe and
+  # wedges the Q6 for the rest of the boot (no rmmod on multipd IPQ5018).
+else
   AUTOLOAD:=$(call AutoProbe,ath11k)
   MODPARAMS.ath11k:=nss_offload=1 frame_mode=2
+endif
 endif
 endef
 
@@ -431,7 +437,11 @@ define KernelPackage/ath11k-ahb
   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
   DEPENDS+= @TARGET_qualcommax +kmod-ath11k +kmod-qrtr-smd
   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k_ahb.ko
+ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),)
+  # Loaded by the nss service, not at boot (see kmod-ath11k).
+else
   AUTOLOAD:=$(call AutoProbe,ath11k_ahb)
+endif
 endef
 
 define KernelPackage/ath11k-ahb/description
