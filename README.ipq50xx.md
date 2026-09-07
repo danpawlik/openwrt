@@ -1,4 +1,4 @@
-# NSS offload on IPQ5018 with the upstream ethernet stack (branch `ipq50xx-nss`)
+# NSS offload on IPQ5018 with the upstream ethernet stack (branch `ipq50xx-rebase`)
 
 This branch runs the **NSS packet-processing core of the IPQ5018** on kernel
 **6.18** with OpenWrt main's **upstream `stmmac` / `dwmac-ipq5018` ethernet
@@ -14,12 +14,20 @@ routed NAT through the firmware at the ceiling of the single 1 GbE CPU port
 core-clock fix described below: both radios (internal 2.4 GHz + QCN6122),
 734/447 Mbit/s through the router over 5 GHz.
 
+> **Branch note.** Work moved to `ipq50xx-rebase` on 2026-09-07, when the
+> series was rebased onto Julius's current `nss-edma-rework`. The old
+> `ipq50xx-nss` branch (tree and feed) is kept as an archive and no longer
+> gets fixes - it is missing, among other things, the ath11k autoload fix
+> below. Use `ipq50xx-rebase` for both repositories or the two will not
+> match.
+
 Discussion and test reports: the
 [forum thread](https://forum.openwrt.org/t/ipq5018-nss-offload-on-kernel-6-18-with-the-upstream-ethernet-stack-gl-b3000/253014).
 
 ## What is in the branch
 
-Ten commits on top of `nss-edma-rework` (base `82693c6350`), in build order:
+Forty-two commits on top of `nss-edma-rework` (base `7e3a860b70`), the ten
+below first and the rest of the work on top, in build order:
 
 | Commit | What |
 |---|---|
@@ -34,8 +42,8 @@ Ten commits on top of `nss-edma-rework` (base `82693c6350`), in build order:
 | `mac80211: ath11k: wifili investigation tooling (inert by default)` | Twenty-two module parameters and traces, all off by default. Kept for whoever repeats the Wi-Fi investigation. |
 | `qualcommax: ipq50xx: debug aids for NSS bring-up work` | `MAGIC_SYSRQ_SERIAL`, `DEVMEM` with `STRICT_DEVMEM` off. **Revert this commit for a build meant to be deployed** - it is one commit precisely so that is easy. |
 
-The companion feed is **[kuncy7/nss-packages](https://github.com/kuncy7/nss-packages/tree/ipq50xx-nss)**,
-branch `ipq50xx-nss`: Julius's feed at `e621a63` plus his twelve `qca-nss-drv`
+The companion feed is **[kuncy7/nss-packages](https://github.com/kuncy7/nss-packages/tree/ipq50xx-rebase)**,
+branch `ipq50xx-rebase`: Julius's feed at `e621a63` plus his twelve `qca-nss-drv`
 hardening commits (cherry-picked, authorship preserved) plus five of ours - the
 12.2 firmware line as a selectable version, the per-target package split that
 lets the stack build on ipq50xx, and four driver patches (`0120`, `0121`,
@@ -44,11 +52,11 @@ lets the stack build on ipq50xx, and four driver patches (`0120`, `0121`,
 ## Quick start
 
 ```sh
-git clone -b ipq50xx-nss https://github.com/kuncy7/openwrt-nss-edma.git
+git clone -b ipq50xx-rebase https://github.com/kuncy7/openwrt-nss-edma.git
 cd openwrt-nss-edma
 
 cp feeds.conf.default feeds.conf
-echo "src-git nss https://github.com/kuncy7/nss-packages.git;ipq50xx-nss" >> feeds.conf
+echo "src-git nss https://github.com/kuncy7/nss-packages.git;ipq50xx-rebase" >> feeds.conf
 
 ./scripts/feeds update -a && ./scripts/feeds install -a
 ./scripts/feeds list -r nss | grep -q qca-nss-drv && echo "nss feed OK"
@@ -57,13 +65,15 @@ make menuconfig
 make -j$(nproc)
 ```
 
-**Select `nss-tools-dwmac` in menuconfig** (Network -> nss-tools-dwmac, or
-`CONFIG_PACKAGE_nss-tools-dwmac=y`). It pulls in every kmod the plane
-needs, and it is the package that actually arms the firmware: without it
-the glue and the driver load, wait for each other and nothing happens -
-`fw_mask` stays `0x0` and the log says "deferring NSS core probe until a
-port is armed". Two people have been caught by this, so the one check
-worth doing on a fresh image is:
+**Select `nss-tools-dwmac` in menuconfig, as `<*>` and not `<M>`**
+(Network -> nss-tools-dwmac, or `CONFIG_PACKAGE_nss-tools-dwmac=y`). It
+pulls in every kmod the plane needs, and it is the package that actually
+arms the firmware: without it the glue and the driver load, wait for each
+other and nothing happens - `fw_mask` stays `0x0` and the log says
+"deferring NSS core probe until a port is armed". `=m` builds the package
+but leaves it out of the image, which looks exactly the same. Four people
+have been caught by one or the other, so the one check worth doing on a
+fresh image is:
 
 ```sh
 ls /etc/rc.d | grep S19nss     # the arming service is installed
