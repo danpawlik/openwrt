@@ -457,7 +457,14 @@ define KernelPackage/ath11k-pci
   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
   DEPENDS+= @PCI_SUPPORT +kmod-qrtr-mhi +kmod-ath11k
   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k_pci.ko
+# Same as kmod-ath11k-ahb: on ipq50xx the 'nss' service loads the bus driver
+# after the arm. Autoloading it here probes the radio while nss_offload is
+# still 0, and ath11k_base takes its nss.enabled from the parameter at probe
+# time - so the PCIe radio silently comes up on the host path and never
+# registers a wifili interface, whatever the service sets afterwards.
+ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),y)
   AUTOLOAD:=$(call AutoProbe,ath11k_pci)
+endif
 endef
 
 define KernelPackage/ath11k-pci/description

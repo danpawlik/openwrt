@@ -113,6 +113,10 @@ wifi_load_now() {
     pbuf_tune
   fi
   modprobe ath11k_ahb 2>/dev/null || true
+  # A PCIe radio (QCN9074/9024 on a board that has one) takes nss.enabled from
+  # the module parameter at probe time too, so it has to be loaded here as
+  # well - not at boot. Absent on boards without one; ignore the failure.
+  modprobe ath11k_pci 2>/dev/null || true
   echo "ath11k loaded on the $( [ "$offload" = 1 ] && echo NSS || echo host ) path"
 }
 

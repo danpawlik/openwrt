@@ -46,6 +46,7 @@ wifi_load() {
 	# pools would silently stay at their defaults. nss-dwmac-up sizes them
 	# after the arm, on every path.
 	modprobe ath11k_ahb 2>/dev/null
+	modprobe ath11k_pci 2>/dev/null
 }
 
 # qca8k did the SerDes/uniphy bring-up at boot; take the switch away from
