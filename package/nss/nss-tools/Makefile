@@ -120,7 +120,6 @@ define Package/nss-tools/install
 	$(INSTALL_BIN) ./files/edma-dump $(1)/usr/sbin/edma-dump
 	$(INSTALL_BIN) ./files/nss-wedge-watch $(1)/usr/sbin/nss-wedge-watch
 	$(INSTALL_BIN) ./files/nss-ppe-diff $(1)/usr/sbin/nss-ppe-diff
-	$(INSTALL_BIN) ./files/nss-irq-affinity $(1)/usr/sbin/nss-irq-affinity
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/nss.init $(1)/etc/init.d/nss
 	$(INSTALL_DIR) $(1)/lib/nss
@@ -136,6 +135,7 @@ endef
 define Package/nss-tools-dwmac/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/nss-dwmac-up $(1)/usr/sbin/nss-dwmac-up
+	$(INSTALL_BIN) ./files/nss-irq-affinity $(1)/usr/sbin/nss-irq-affinity
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/nss-dwmac.init $(1)/etc/init.d/nss
 	$(INSTALL_DIR) $(1)/lib/nss
