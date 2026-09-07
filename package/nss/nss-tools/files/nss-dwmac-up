@@ -63,11 +63,17 @@ wifi_load_now() {
   grep -q '^ath11k_ahb ' /proc/modules && return 0  # someone got there first
   # NB: the guard is on ath11k_ahb, not ath11k - kmodloader loads the core
   # module at boot; it is the _ahb probe that binds the radios.
-  modprobe ath11k 2>/dev/null
+  # Best-effort from here on, and it has to be: this function also runs on
+  # the failure path, where the whole point is to get the radios up on the
+  # host after the takeover did not happen. The script runs under 'set -e',
+  # and qca-nss-pbuf exits 1 whenever Wi-Fi offload is off - so without the
+  # guards below that init call kills us before ath11k_ahb is ever loaded,
+  # and the board comes up with no radios at all (measured).
+  modprobe ath11k 2>/dev/null || true
   [ -w /sys/module/ath11k/parameters/nss_offload ] &&
     echo "$offload" > /sys/module/ath11k/parameters/nss_offload
-  /etc/init.d/qca-nss-pbuf start >/dev/null 2>&1
-  modprobe ath11k_ahb 2>/dev/null
+  /etc/init.d/qca-nss-pbuf start >/dev/null 2>&1 || true
+  modprobe ath11k_ahb 2>/dev/null || true
   echo "ath11k loaded on the $( [ "$offload" = 1 ] && echo NSS || echo host ) path"
 }
 
