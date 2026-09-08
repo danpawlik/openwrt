@@ -89,6 +89,36 @@ fi
 [ -n "$(uci -q get nss.general.wifi_offload)" ] || uci set nss.general.wifi_offload="${wifi_offload:-0}"
 [ -n "$(uci -q get nss.general.fw_logbuf)" ] || uci set nss.general.fw_logbuf='256'
 [ -z "$(uci -q get nss.general.fw_mask)" ] && [ -n "$fw_mask" ] && uci set nss.general.fw_mask="$fw_mask"
+# Do not touch a WAN that is already a VLAN on the trunk. Someone coming from
+# another tree with a tagged ISP handover has network.wan.device set to
+# eth0.<their vid>, and rewriting that to eth0.2 takes their link down -
+# measured on an MX2000 whose ISP hands over tagged 35 (LS3434, forum #232).
+wan_vid=2
+if [ "$known_board" = 1 ] && [ "${wan_on_trunk:-1}" = 1 ]; then
+	wan_trunk="$trunk"
+	[ -n "$wan_trunk" ] || wan_trunk=eth0
+	cur_wan="$(uci -q get network.wan.device)"
+	case "$cur_wan" in
+	"$wan_trunk".*)
+		vid="${cur_wan##*.}"
+		case "$vid" in
+		''|*[!0-9]*) ;;
+		*) wan_vid="$vid" ;;
+		esac
+		;;
+	esac
+fi
+
+# The board tables put the WAN on VLAN 2; if the admin's WAN device says a
+# different vid, carry it into the VTU's wan block so both sides match. The
+# block is the last one and starts with '2:', so only its vid changes - the
+# port membership the board needs stays as it is.
+if [ -n "$vtu" ] && [ "${wan_vid:-2}" != 2 ]; then
+	case "$vtu" in
+	*';2:'*) vtu="${vtu%;2:*};${wan_vid}:${vtu##*;2:}" ;;
+	esac
+fi
+
 [ -z "$(uci -q get nss.general.vtu)" ] && [ -n "$vtu" ] && uci set nss.general.vtu="$vtu"
 [ -z "$(uci -q get nss.general.switch_args)" ] && [ -n "$switch_args" ] && uci set nss.general.switch_args="$switch_args"
 # The trunk netdev: GMAC1's name. eth0 wherever GMAC0 is unused (every board
@@ -106,8 +136,16 @@ if [ "$known_board" = 1 ]; then
 	if [ "${wan_on_trunk:-1}" = 1 ]; then
 		# WAN shares the trunk: br-lan gets the lan VLAN, wan the wan VLAN.
 		lan_port="$trunk.1"
-		[ -n "$(uci -q get network.wan)" ] && uci set network.wan.device="$trunk.2"
-		[ -n "$(uci -q get network.wan6)" ] && uci set network.wan6.device="$trunk.2"
+
+		# wan_vid was worked out above: 2 unless the admin already has
+		# the WAN on another VLAN of the trunk, in which case theirs is
+		# kept and the VTU was rewritten to match.
+		if [ "${wan_vid:-2}" = 2 ]; then
+			[ -n "$(uci -q get network.wan)" ] && uci set network.wan.device="$trunk.2"
+			[ -n "$(uci -q get network.wan6)" ] && uci set network.wan6.device="$trunk.2"
+		else
+			logger -t nss "keeping the existing WAN device $cur_wan (VLAN $wan_vid on the trunk); the default VTU is being rewritten to match, but tagged-vs-untagged on the WAN port is yours to set in nss.general.vtu"
+		fi
 		uci set nss.general.topology='vlan-trunk'
 	else
 		# LAN-only trunk: br-lan sits on the untagged trunk, wan is its
