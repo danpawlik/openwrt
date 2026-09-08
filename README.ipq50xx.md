@@ -82,6 +82,37 @@ logread -e nss                 # ends with "NSS wired plane + ECM up"
 
 Note the service installs as `/etc/init.d/nss`, not `nss-dwmac`.
 
+### Rebuilding on top of an existing build directory
+
+Selecting `nss-tools-dwmac` also switches off the boot-time autoload of
+`ath11k`, `ath11k_ahb` and `ath11k_pci`: the `nss` service loads them itself,
+after the plane is armed, because `ath11k_base` takes `nss.enabled` from the
+module parameter at probe time and never retries. A radio probed before the
+core is up stays on the host path for the rest of the boot, or wedges its Q6
+outright.
+
+That switch lives in a `make` conditional in `package/kernel/mac80211/ath.mk`,
+and **OpenWrt does not rebuild a package because a conditional changed**. On a
+tree that has already been built once - including one you only pulled new
+commits into - the old package is reused and the change never reaches the
+image. Three people have been caught by this. So after changing that symbol,
+or after pulling:
+
+```sh
+make package/kernel/mac80211/clean
+make -j$(nproc)
+```
+
+The check on the running board is one line - these files must **not** exist:
+
+```sh
+ls /etc/modules.d/ath11k*
+```
+
+If they do, the gate is not in your image, and the log will show
+`nss state in default init state` / `NSS SOC Initialization Failed :-22`
+seconds *before* `nss core 0 booted successfully`.
+
 The `.config` the validated image was built from, reduced to what matters
 (everything the packages depend on is pulled in by `nss-tools-dwmac`):
 
