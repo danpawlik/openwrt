@@ -221,9 +221,12 @@ migrates an existing DSA-style network config once (`br-lan` ports →
 |---|---|---|
 | `enabled` | `1` | `0` = stay on the host stack (same topology, no firmware) |
 | `wifi_offload` | `0` | `1` = load ath11k with `nss_offload=1`. Validated on the GL-B3000; the default stays `0` until other boards report back. |
-| `fw_mask` | `0x2` | bitmask of GMACs to hand to the firmware; bit N = GMAC N. Only GMAC1 is validated. |
+| `fw_mask` | `0x2` | bitmask of GMACs to hand to the firmware; bit N = GMAC N, and every bit needs a netdev (`trunk` / `extra_ports`). `0x3` arms both. Only GMAC1 is validated; a second GMAC is untested (see *Porting*). |
 | `vtu` | *(B3000 wiring on the B3000, empty elsewhere)* | VTU program for `qca8337-nss`; empty = VTU off, the switch stays one untagged LAN. Only needed when WAN shares the trunk (see *Porting*) |
-| `trunk` | `eth0` | the switch trunk netdev = GMAC1. `eth1` on a board whose GMAC0 is the WAN PHY (Xunison D50). |
+| `trunk` | `eth0` | the switch trunk netdev. `eth1` on a board whose GMAC0 is the WAN PHY (Xunison D50); `lan` on the MX6200, which has no switch. |
+| `trunk_if` | `1` | which GMAC the trunk is = its NSS phys_if. `0` where the switch hangs off GMAC0 (SPNMX56, MX6200). |
+| `extra_ports` | *(empty)* | other GMACs in use, as `<if>:<netdev>` entries - the D50's ethernet WAN is `0:wan`, the SPNMX56's 2.5G PHY `1:wan`. Named here, armed by `fw_mask`. |
+| `fabric` | `qca8337` | `none` on a board with no switch: skips the qca8k unbind and the fabric module. |
 | `switch_dev` | `90000.mdio-1:11` | the switch's MDIO device, unbound from `qca8k` before the re-arm |
 | `switch_args` | *(empty)* | further `qca8337-nss` parameters, passed verbatim (`cpu_port=`, `ports=`, `wake_phys=`, `bus_via=`) |
 | `fw_logbuf` | `256` | firmware log ring size, read at `/sys/kernel/debug/qca-nss-drv/logs` |
@@ -286,13 +289,21 @@ The board side is small. The parts, in order of effort:
    entire diff between the B3000 DTS and a plain board. Boards already in the
    tree (Linksys MX2000 / MR5500 / MX5500, Xiaomi AX6000, …) need only this
    line to get the NSS node and the reserved memory.
-2. **Which GMAC feeds the switch.** On the B3000 it is GMAC1 (`fw_mask=0x2`,
-   glue parameter `fw_if=1`, `ifname=eth0`). Only GMAC1 has been armed here;
-   GMAC0 (the internal GE PHY) has not been tried.
+2. **Which GMAC feeds what.** phys_if N is GMAC N. On the B3000 the switch is
+   on GMAC1 (`fw_mask=0x2`, `trunk=eth0`, `trunk_if=1`) and GMAC0 is unused.
+   The glue takes a map of netdevs per phys_if (`ifmap=1:eth0,0:wan`, or the
+   same string into `/sys/kernel/debug/qca-dwmac-nss/ifmap`) and arms
+   whichever bits `fw_mask` names, so a board with two GMACs in use - the
+   switch on one and a WAN PHY on the other - can hand both to the firmware:
+   `trunk_if` for the trunk's GMAC, `extra_ports='<if>:<netdev>'` for the
+   other, `fw_mask=0x3`. Only GMAC1 alone has been validated here; two GMACs,
+   and GMAC0 at all, have not run on any board yet.
    Boards already in the table (`nss-dwmac.defaults`, keyed on
    `board_name`, contributed by George Moussalem): GL-B3000, Linksys
-   MX2000, MX5500 and MR5500 - on those the settings apply themselves on
-   first boot. Anything else logs a line telling you to set them by hand.
+   MX2000, MX5500 and MR5500 (validated wiring), Xunison D50, and - straight
+   from the DTS, untested - Linksys SPNMX56 and MX6200, Xiaomi Redmi AX5400.
+   On those the settings apply themselves on first boot. Anything else logs a
+   line telling you to set them by hand.
 
 3. **The switch.** Find your MDIO device names with
    `ls /sys/bus/mdio_bus/devices/` and set `bus_via` / `wake_phys` from them;
@@ -315,9 +326,12 @@ The board side is small. The parts, in order of effort:
    carries no board assumption of its own any more.
 
 Also: a board whose WAN is on the internal GE PHY (GMAC0), like the D50, needs
-no VTU at all - the switch only carries LANs, `vlans` can stay empty - but then
-the network-config migration script (which assumes `eth0.1`/`eth0.2` on one
-trunk) does not apply as-is, and arming GMAC0 is untested.
+no VTU at all - the switch only carries LANs, `vlans` can stay empty - and the
+migration then puts `br-lan` on the untagged trunk and leaves `wan` alone
+(`wan_on_trunk=0` in the table). Whether that WAN gets accelerated is
+`fw_mask`: `0x2` keeps it on the host, `0x3` arms it as phys_if 0 - untested,
+and the first thing to read after trying it is `status`: both ports should
+show `started` with `rs=3 ts=6`.
 
 ## What is accelerated
 

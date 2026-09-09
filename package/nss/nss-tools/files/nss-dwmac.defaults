@@ -18,6 +18,13 @@
 # the switch's own PHYs instead of an SGMII MAC port, use cpu_port=255
 # ("no forced port") and list that PHY in wake_phys too - it has to
 # autonegotiate like a front port.
+#
+# Two GMACs: trunk_if is the GMAC index of the trunk (default 1; 0 where the
+# switch hangs off GMAC0), extra_ports lists any other GMAC in use as
+# '<if>:<netdev>' (a WAN PHY on the other GMAC), and fw_mask says which of
+# them the firmware gets - bit N = GMAC N. fabric='none' on a board with no
+# switch at all. Entries marked UNTESTED come straight from the DTS in
+# openwrt main and have not run on the board: the first report decides.
 
 . /lib/functions.sh
 
@@ -53,13 +60,56 @@ nss_dwmac_board_defaults() {
 		# WAN is GMAC0's own GE PHY (netdev 'wan'), so GMAC1 - the switch
 		# trunk - comes up as eth1 and carries LAN only: port 0 = CPU
 		# (SGMII), 1-3 = lan. No VTU: one untagged LAN, br-lan on eth1.
-		# GMAC0 is not armed yet, so routed LAN<->WAN flows stay on the
-		# host; the NSS plane still serves the LAN side and rmnet.
+		# GMAC0 is known to the glue as phys_if 0 but not armed by
+		# default: fw_mask='0x3' hands the ethernet WAN to the firmware
+		# too (UNTESTED - LS3434 has the board). Until then routed
+		# LAN<->WAN flows over that PHY stay on the host; the NSS plane
+		# still serves the LAN side and rmnet.
 		fw_mask='0x2'
 		trunk='eth1'
+		trunk_if='1'
+		extra_ports='0:wan'
 		wan_on_trunk=0
 		switch_args=''
 		vtu=''
+		;;
+	linksys,spnmx56)
+		# UNTESTED. The switch hangs off GMAC0 through the switch's own
+		# PHY 4 (port 5 = CPU, PHY-to-PHY gmii), so the trunk is eth0
+		# and phys_if 0; ports 2-4 = lan3/lan2/lan1 (PHY 1-3). WAN is a
+		# QCA8081 2.5G PHY on GMAC1, netdev 'wan' = phys_if 1. No VTU:
+		# the switch carries LAN only.
+		fw_mask='0x3'
+		trunk='eth0'
+		trunk_if='0'
+		extra_ports='1:wan'
+		wan_on_trunk=0
+		switch_args='cpu_port=255 ports=0x3c wake_phys=90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03,90000.mdio-1:04'
+		vtu=''
+		;;
+	linksys,mx6200)
+		# UNTESTED. No switch: GMAC0 is the LAN PHY (netdev 'lan'),
+		# GMAC1 a GPY115C on SGMII (netdev 'wan'). Two plain ports, both
+		# handed to the firmware; br-lan sits on 'lan'.
+		fw_mask='0x3'
+		trunk='lan'
+		trunk_if='0'
+		extra_ports='1:wan'
+		wan_on_trunk=0
+		fabric='none'
+		switch_args=''
+		vtu=''
+		;;
+	xiaomi,redmi-ax5400)
+		# UNTESTED. Two CPU ports on the switch: port 5 -> GMAC0 (PHY-to-
+		# PHY) and port 6 -> GMAC1 (SGMII). The SGMII one is used, as on
+		# the Linksys boards: trunk = eth1 = phys_if 1, port 6 = CPU,
+		# 1 = wan, 2-4 = lan1-3; port 5 is left out of the fabric.
+		fw_mask='0x2'
+		trunk='eth1'
+		trunk_if='1'
+		switch_args='cpu_port=6 ports=0x5e wake_phys=90000.mdio-1:00,90000.mdio-1:01,90000.mdio-1:02,90000.mdio-1:03'
+		vtu='1:6t,2u,3u,4u;2:6t,1u'
 		;;
 	*)
 		return 1
@@ -125,6 +175,9 @@ fi
 # in the table above); eth1 on a board whose GMAC0 is the WAN PHY (Xunison
 # D50) - those set nss.general.trunk by hand until they get a table entry.
 [ -z "$(uci -q get nss.general.trunk)" ] && [ -n "$trunk" ] && uci set nss.general.trunk="$trunk"
+[ -z "$(uci -q get nss.general.trunk_if)" ] && [ -n "$trunk_if" ] && uci set nss.general.trunk_if="$trunk_if"
+[ -z "$(uci -q get nss.general.extra_ports)" ] && [ -n "$extra_ports" ] && uci set nss.general.extra_ports="$extra_ports"
+[ -z "$(uci -q get nss.general.fabric)" ] && [ -n "$fabric" ] && uci set nss.general.fabric="$fabric"
 
 # Rewrite the network only for a board this script actually knows. On an
 # unknown board the trunk may not be the right topology at all - e.g. the

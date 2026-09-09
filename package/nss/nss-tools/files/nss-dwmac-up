@@ -194,3 +194,9 @@ for p in "/sys/class/net/$TRUNK" "/sys/class/net/$TRUNK".*; do
   i="${p##*/}"
   echo "nss-dwmac diag: $i rx=$(cat "$p/statistics/rx_packets")/$(cat "$p/statistics/rx_bytes")B tx=$(cat "$p/statistics/tx_packets")"
 done
+# the second GMAC, where a board arms one (nss.general.extra_ports)
+for e in $(uci -q get nss.general.extra_ports); do
+  p="/sys/class/net/${e#*:}"
+  [ -d "$p" ] || continue
+  echo "nss-dwmac diag: ${e#*:} (phys_if ${e%%:*}) rx=$(cat "$p/statistics/rx_packets")/$(cat "$p/statistics/rx_bytes")B tx=$(cat "$p/statistics/tx_packets")"
+done

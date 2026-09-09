@@ -62,23 +62,32 @@
 
 static char *ifname = "eth0";
 module_param(ifname, charp, 0444);
-MODULE_PARM_DESC(ifname, "netdev backing the armed NSS phys_if (default eth0); the initial value of the debugfs 'ifname' file");
-
-/*
- * The name the arm will look up. Seeded from the module parameter, but
- * writable through debugfs while nothing is armed, because the module is
- * not always loaded by whoever knows the board: qca-nss-drv pulls it in as
- * a symbol dependency, and then it comes up with the default no matter what
- * the configuration says. Being stuck with a load-time-only parameter meant
- * a board whose trunk is not eth0 could not be armed at all without a
- * rebuild (reported on the Xunison D50, where GMAC0 is renamed 'wan' and
- * the trunk is eth1).
- */
-static char ifname_cur[IFNAMSIZ] = "eth0";
+MODULE_PARM_DESC(ifname, "netdev backing NSS phys_if <fw_if> (default eth0); the initial value of the debugfs 'ifname' file");
 
 static int fw_if = 1;
 module_param(fw_if, int, 0444);
 MODULE_PARM_DESC(fw_if, "NSS phys_if number of that netdev = its GMAC index (default 1, gmac1)");
+
+static char *ifmap = "";
+module_param(ifmap, charp, 0444);
+MODULE_PARM_DESC(ifmap, "netdev per NSS phys_if, '<if>:<netdev>[,<if>:<netdev>]' e.g. '1:eth1,0:wan'; overrides ifname/fw_if for the ports it names");
+
+/*
+ * The netdev each phys_if arms - phys_if N is GMAC N on this SoC. Seeded
+ * from the module parameters, but writable through debugfs for any port
+ * that is not armed yet, because the module is not always loaded by
+ * whoever knows the board: qca-nss-drv pulls it in as a symbol dependency,
+ * and then it comes up with the defaults no matter what the configuration
+ * says. Being stuck with a load-time-only parameter meant a board whose
+ * trunk is not eth0 could not be armed at all without a rebuild (reported
+ * on the Xunison D50, where GMAC0 is renamed 'wan' and the trunk is eth1).
+ *
+ * One entry per port, not one name, because half the ipq5018 boards have
+ * two GMACs in use: the switch on one and a WAN PHY on the other (D50,
+ * MX6200), or the switch on GMAC0 and a 2.5G PHY on GMAC1 (SPNMX56,
+ * AX6000). Those want both armed, and each needs its own netdev.
+ */
+static char dwmac_nss_ifnames[NSS_DP_MAX_INTERFACES][IFNAMSIZ];
 
 static bool boot_unarmed;
 module_param(boot_unarmed, bool, 0644);
@@ -674,10 +683,15 @@ static int dwmac_nss_fw_arm(int if_num)
 	if (port->state >= DWMAC_NSS_PORT_ARMED)
 		return 0;
 
-	netdev = dev_get_by_name(&init_net, ifname_cur);
+	if (!dwmac_nss_ifnames[if_num][0]) {
+		pr_warn("qca-dwmac-nss: no netdev configured for phys_if %d - set it with 'echo %d:<netdev> > /sys/kernel/debug/qca-dwmac-nss/ifmap'\n",
+			if_num, if_num);
+		return -ENODEV;
+	}
+	netdev = dev_get_by_name(&init_net, dwmac_nss_ifnames[if_num]);
 	if (!netdev) {
-		pr_warn("qca-dwmac-nss: no netdev '%s' to arm phys_if %d - set the right one with 'echo <netdev> > /sys/kernel/debug/qca-dwmac-nss/ifname'\n",
-			ifname_cur, if_num);
+		pr_warn("qca-dwmac-nss: no netdev '%s' to arm phys_if %d - set the right one with 'echo %d:<netdev> > /sys/kernel/debug/qca-dwmac-nss/ifmap'\n",
+			dwmac_nss_ifnames[if_num], if_num, if_num);
 		return -ENODEV;
 	}
 
@@ -691,32 +705,49 @@ static int dwmac_nss_fw_arm(int if_num)
 static int dwmac_nss_fw_mask_apply(unsigned long mask)
 {
 	unsigned long old = dwmac_nss_fw_mask;
+	unsigned long armed_now = 0;
 	int i, ret = 0;
 
-	/* only the configured GMAC can be armed on this board */
-	if (mask & ~BIT(fw_if)) {
-		pr_warn("qca-dwmac-nss: fw_mask %#lx outside supported bit %d\n",
-			mask, fw_if);
+	if (mask & ~GENMASK(NSS_DP_MAX_INTERFACES - 1, NSS_DP_START_IFNUM)) {
+		pr_warn("qca-dwmac-nss: fw_mask %#lx has bits outside phys_if %d..%d\n",
+			mask, NSS_DP_START_IFNUM, NSS_DP_MAX_INTERFACES - 1);
 		return -EINVAL;
 	}
 
+	/*
+	 * Any port with a netdev configured can be armed, and several at
+	 * once: bit N = GMAC N. All-or-nothing - a mask that names a port
+	 * without a netdev leaves the state as it was, instead of half the
+	 * boards' worth of ports armed under a mask that says otherwise.
+	 */
 	for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++) {
 		bool want = !!(mask & BIT(i));
 		bool have = !!(old & BIT(i));
 
-		if (want && !have)
+		if (want && !have) {
 			ret = dwmac_nss_fw_arm(i);
-		else if (!want && have)
+			if (ret)
+				break;
+			armed_now |= BIT(i);
+		} else if (!want && have) {
 			dwmac_nss_port_unwind(&dwmac_nss_ports[i],
 					      DWMAC_NSS_PORT_IDLE, true, true);
+		}
 	}
 
-	if (!ret) {
-		WRITE_ONCE(dwmac_nss_fw_mask, mask);
-		if (mask && !old)
-			dwmac_nss_gate_kick();
+	if (ret) {
+		for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++)
+			if (armed_now & BIT(i))
+				dwmac_nss_port_unwind(&dwmac_nss_ports[i],
+						      DWMAC_NSS_PORT_IDLE,
+						      false, false);
+		return ret;
 	}
-	return ret;
+
+	WRITE_ONCE(dwmac_nss_fw_mask, mask);
+	if (mask && !old)
+		dwmac_nss_gate_kick();
+	return 0;
 }
 
 static ssize_t dwmac_nss_fw_mask_write(struct file *file,
@@ -767,20 +798,75 @@ static const struct file_operations dwmac_nss_fw_mask_fops = {
 };
 
 /*
- * ===== ifname =====
+ * ===== ifname / ifmap =====
  *
- * Which netdev the arm hands to the firmware. Refused once anything is
- * armed: the port already holds a reference to the old netdev, and the
- * name is what the unwind path is written around.
+ * Which netdev each phys_if hands to the firmware. A port's entry is
+ * refused once that port is armed: it already holds a reference to the
+ * old netdev, and the name is what the unwind path is written around.
+ * Other ports stay writable.
+ *
+ * Syntax, shared by the ifmap module parameter and both debugfs files:
+ * entries separated by commas or whitespace, each '<if>:<netdev>'; a bare
+ * '<netdev>' means phys_if <fw_if>, which is what the old single-port
+ * 'ifname' file always meant. The whole string is checked before any of
+ * it is applied. Caller holds dwmac_nss_lock.
  */
-
-static ssize_t dwmac_nss_ifname_write(struct file *file,
-				      const char __user *ubuf,
-				      size_t count, loff_t *ppos)
+static int dwmac_nss_ifmap_apply(const char *spec)
 {
-	char buf[IFNAMSIZ + 2];
-	char *name;
+	char names[NSS_DP_MAX_INTERFACES][IFNAMSIZ];
+	unsigned long touched = 0;
+	char *buf, *tok, *cur;
 	int ret = 0;
+
+	buf = kstrdup(spec, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	cur = buf;
+	while ((tok = strsep(&cur, ", \t\n;")) != NULL) {
+		char *name;
+		int n = fw_if;
+
+		if (!*tok)
+			continue;
+		name = strchr(tok, ':');
+		if (name) {
+			*name++ = '\0';
+			if (kstrtoint(tok, 10, &n) || n < NSS_DP_START_IFNUM ||
+			    n >= NSS_DP_MAX_INTERFACES) {
+				ret = -EINVAL;
+				break;
+			}
+		} else {
+			name = tok;
+		}
+		if (!*name || strlen(name) >= IFNAMSIZ) {
+			ret = -EINVAL;
+			break;
+		}
+		if (dwmac_nss_ports[n].state >= DWMAC_NSS_PORT_ARMED) {
+			ret = -EBUSY;
+			break;
+		}
+		strscpy(names[n], name, IFNAMSIZ);
+		touched |= BIT(n);
+	}
+
+	if (!ret) {
+		int i;
+
+		for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++)
+			if (touched & BIT(i))
+				strscpy(dwmac_nss_ifnames[i], names[i], IFNAMSIZ);
+	}
+	kfree(buf);
+	return ret;
+}
+
+static ssize_t dwmac_nss_ifmap_store(const char __user *ubuf, size_t count)
+{
+	char buf[NSS_DP_MAX_INTERFACES * (IFNAMSIZ + 4)];
+	int ret;
 
 	if (count >= sizeof(buf))
 		return -EINVAL;
@@ -788,25 +874,58 @@ static ssize_t dwmac_nss_ifname_write(struct file *file,
 		return -EFAULT;
 	buf[count] = '\0';
 
-	name = strim(buf);
-	if (!*name || strlen(name) >= IFNAMSIZ)
-		return -EINVAL;
-
 	mutex_lock(&dwmac_nss_lock);
-	if (READ_ONCE(dwmac_nss_fw_mask))
-		ret = -EBUSY;
-	else
-		strscpy(ifname_cur, name, sizeof(ifname_cur));
+	ret = dwmac_nss_ifmap_apply(strim(buf));
 	mutex_unlock(&dwmac_nss_lock);
 
 	return ret ? ret : count;
 }
 
+static ssize_t dwmac_nss_ifname_write(struct file *file,
+				      const char __user *ubuf,
+				      size_t count, loff_t *ppos)
+{
+	return dwmac_nss_ifmap_store(ubuf, count);
+}
+
 static int dwmac_nss_ifname_show(struct seq_file *m, void *v)
 {
-	seq_printf(m, "%s\n", ifname_cur);
+	seq_printf(m, "%s\n", dwmac_nss_ifnames[fw_if]);
 	return 0;
 }
+
+static ssize_t dwmac_nss_ifmap_write(struct file *file,
+				     const char __user *ubuf,
+				     size_t count, loff_t *ppos)
+{
+	return dwmac_nss_ifmap_store(ubuf, count);
+}
+
+static int dwmac_nss_ifmap_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	mutex_lock(&dwmac_nss_lock);
+	for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++)
+		if (dwmac_nss_ifnames[i][0])
+			seq_printf(m, "%d:%s\n", i, dwmac_nss_ifnames[i]);
+	mutex_unlock(&dwmac_nss_lock);
+	return 0;
+}
+
+static int dwmac_nss_ifmap_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dwmac_nss_ifmap_show, NULL);
+}
+
+static const struct file_operations dwmac_nss_ifmap_fops = {
+	.owner		= THIS_MODULE,
+	.open		= dwmac_nss_ifmap_open,
+	.read		= seq_read,
+	.write		= dwmac_nss_ifmap_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int dwmac_nss_ifname_open(struct inode *inode, struct file *file)
 {
@@ -1079,7 +1198,15 @@ static int __init qca_dwmac_nss_init(void)
 		return -EINVAL;
 	}
 
-	strscpy(ifname_cur, ifname, sizeof(ifname_cur));
+	/* the legacy pair first, then ifmap on top for the ports it names */
+	strscpy(dwmac_nss_ifnames[fw_if], ifname, IFNAMSIZ);
+	if (*ifmap) {
+		ret = dwmac_nss_ifmap_apply(ifmap);
+		if (ret) {
+			pr_err("qca-dwmac-nss: bad ifmap '%s' (%d)\n", ifmap, ret);
+			return ret;
+		}
+	}
 
 	qca_dwmac_nss_tcsr_set();
 
@@ -1094,11 +1221,21 @@ static int __init qca_dwmac_nss_init(void)
 			    &dwmac_nss_fw_mask_fops);
 	debugfs_create_file("ifname", 0644, dwmac_nss_dentry, NULL,
 			    &dwmac_nss_ifname_fops);
+	debugfs_create_file("ifmap", 0644, dwmac_nss_dentry, NULL,
+			    &dwmac_nss_ifmap_fops);
 	debugfs_create_file("rx_kick", 0644, dwmac_nss_dentry, NULL,
 			    &dwmac_nss_rx_kick_fops);
 
-	pr_info("qca-dwmac-nss: nss-dp glue for IPQ5018 loaded (%s = phys_if %d)\n",
-		ifname, fw_if);
+	{
+		char map[NSS_DP_MAX_INTERFACES * (IFNAMSIZ + 4)] = "";
+		int i, n = 0;
+
+		for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++)
+			if (dwmac_nss_ifnames[i][0])
+				n += scnprintf(map + n, sizeof(map) - n, "%s%s = phys_if %d",
+					       n ? ", " : "", dwmac_nss_ifnames[i], i);
+		pr_info("qca-dwmac-nss: nss-dp glue for IPQ5018 loaded (%s)\n", map);
+	}
 	return 0;
 }
 

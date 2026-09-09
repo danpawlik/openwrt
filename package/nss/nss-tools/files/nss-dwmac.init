@@ -64,7 +64,18 @@ wifi_load() {
 . /lib/functions.sh
 
 switch_to_trunk() {
-	local dev vtu args
+	local dev vtu args fabric
+
+	# A board with no switch at all (Linksys MX6200: GMAC0 is the LAN PHY,
+	# GMAC1 the WAN PHY) has nothing to re-arm; qca8337-nss loaded there
+	# would poke the B3000's switch registers at an MDIO address that
+	# answers with whatever sits at it.
+	fabric="$(uci -q get nss.general.fabric)"
+	[ -n "$fabric" ] || fabric=qca8337
+	if [ "$fabric" = "none" ]; then
+		logger -t nss "no switch fabric on this board (nss.general.fabric=none), trunk is a plain PHY port"
+		return 0
+	fi
 
 	dev="$(uci -q get nss.general.switch_dev)"
 	[ -n "$dev" ] || dev="90000.mdio-1:11"
@@ -119,21 +130,31 @@ start_service() {
 	# netdevice notifier replays NETDEV_REGISTER for every netdev that
 	# already exists, so netifd's eth0.<vid> are picked up regardless of
 	# who came first.
-	# The trunk is whatever netdev the switch-side GMAC (GMAC1) got: eth0 on
-	# boards where GMAC0 is unused (GL-B3000, Linksys), eth1 where GMAC0 is
-	# the WAN PHY (Xunison D50). nss.general.trunk names it; the glue must
-	# get it as a parameter, so insmod (kmodloader's modprobe drops them).
-	local trunk
+	# Which netdev backs which NSS phys_if (= GMAC index). The trunk is
+	# whatever netdev the switch-side GMAC got: eth0 on boards where GMAC0
+	# is unused (GL-B3000, Linksys MX/MR), eth1 where GMAC0 is the WAN PHY
+	# (Xunison D50), eth0 again where the switch hangs off GMAC0 (SPNMX56,
+	# AX5400 port 5). nss.general.trunk names it, nss.general.trunk_if says
+	# which GMAC that is (default 1). A second GMAC in use - the D50's and
+	# MX6200's WAN PHY on GMAC0, the SPNMX56's 2.5G PHY on GMAC1 - goes in
+	# nss.general.extra_ports as '<if>:<netdev>' entries; fw_mask decides
+	# which of them the firmware actually gets.
+	# The glue must get the map as a parameter (kmodloader's modprobe drops
+	# them), so insmod; and through debugfs as well, because the insmod is a
+	# no-op when the module is already loaded - and it often is: qca-nss-drv
+	# pulls the glue in as a symbol dependency, so kmodloader can get there
+	# first and the parameter is then lost without a word.
+	local trunk trunk_if extra ifmap
 	trunk="$(uci -q get nss.general.trunk)"
 	[ -n "$trunk" ] || trunk=eth0
-	insmod "/lib/modules/$(uname -r)/qca-dwmac-nss.ko" ifname="$trunk" 2>/dev/null ||
+	trunk_if="$(uci -q get nss.general.trunk_if)"
+	[ -n "$trunk_if" ] || trunk_if=1
+	extra="$(uci -q get nss.general.extra_ports | tr ' ' ',')"
+	ifmap="$trunk_if:$trunk${extra:+,$extra}"
+	insmod "/lib/modules/$(uname -r)/qca-dwmac-nss.ko" ifmap="$ifmap" 2>/dev/null ||
 		modprobe qca-dwmac-nss 2>/dev/null
-	# The insmod above is a no-op when the module is already loaded, and it
-	# often is: qca-nss-drv pulls the glue in as a symbol dependency, so
-	# kmodloader can get there first and the parameter is then lost without
-	# a word. Set the name through debugfs too, which works either way.
-	[ -w /sys/kernel/debug/qca-dwmac-nss/ifname ] &&
-		echo "$trunk" > /sys/kernel/debug/qca-dwmac-nss/ifname
+	[ -w /sys/kernel/debug/qca-dwmac-nss/ifmap ] &&
+		echo "$ifmap" > /sys/kernel/debug/qca-dwmac-nss/ifmap
 	modprobe qca-nss-drv 2>/dev/null
 
 	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.
