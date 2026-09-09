@@ -103,8 +103,17 @@ wifi_load_now() {
   # so every step here has to be unable to kill us before ath11k_ahb is
   # loaded - otherwise the board comes up with no radios at all (measured).
   modprobe ath11k 2>/dev/null || true
-  [ -w /sys/module/ath11k/parameters/nss_offload ] &&
+  if [ -w /sys/module/ath11k/parameters/nss_offload ]; then
     echo "$offload" > /sys/module/ath11k/parameters/nss_offload
+  elif [ "$offload" = 1 ]; then
+    # The knob only exists when mac80211 was built with NSS support. Asking
+    # for wifi_offload=1 against a build without it did nothing at all and
+    # still logged "loaded on the NSS path", so people reasonably believed
+    # the offload was on (#249).
+    echo "WARN: ath11k has no nss_offload parameter - Wi-Fi stays on the host path."
+    echo "WARN: enable NSS offloading under Wireless drivers in menuconfig (CONFIG_ATH11K_NSS_SUPPORT), then: make package/kernel/mac80211/clean"
+    offload=0
+  fi
   # Pools before the radios bind: each offloaded radio pins ~4096 payloads in
   # its RXDMA ring out of the shared N2H pool (E177). Only on the armed path -
   # this function also runs after a failed takeover, where there is no core to
