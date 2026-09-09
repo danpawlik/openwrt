@@ -1122,8 +1122,22 @@ static int dwmac_nss_status_show(struct seq_file *m, void *v)
 	for (i = NSS_DP_START_IFNUM; i < NSS_DP_MAX_INTERFACES; i++) {
 		struct dwmac_nss_port *port = &dwmac_nss_ports[i];
 
-		if (port->state == DWMAC_NSS_PORT_IDLE)
+		if (port->state == DWMAC_NSS_PORT_IDLE) {
+			/*
+			 * A port that has a netdev in the map but no state is
+			 * the confusing case: the map says it should be a
+			 * firmware port, yet nothing armed it. Say which of
+			 * the two reasons it is instead of staying silent.
+			 */
+			if (!dwmac_nss_ifnames[i][0])
+				continue;
+			seq_printf(m, "phys_if %d: idle dev=%s (%s)\n", i,
+				   dwmac_nss_ifnames[i],
+				   (READ_ONCE(dwmac_nss_fw_mask) & BIT(i)) ?
+				   "in fw_mask, netdev not up yet" :
+				   "not in fw_mask");
 			continue;
+		}
 		seq_printf(m, "phys_if %d: %s dev=%s fw_link=%s%s\n",
 			   i, dwmac_nss_state_names[port->state],
 			   netdev_name(port->netdev),
