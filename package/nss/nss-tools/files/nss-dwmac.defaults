@@ -127,10 +127,11 @@ nss_dwmac_board_defaults() {
 		vtu='1:0t,1u,2u,3u;2:0t,4u'
 		;;
 	cmcc,mr3000d-ci)
-		# UNTESTED. Port 6 = CPU (SGMII, GMAC1), 4 = wan, 1-3 =
-		# lan3/lan2/lan1. GMAC0 is wired to the switch's PHY 4 as well, but
-		# the DTS gives it no port, so it stays out of the fabric - it still
-		# takes eth0, which makes the trunk eth1.
+		# Run on the board (forum #313): the wired plane and 5 GHz Wi-Fi
+		# offload come up on this entry unchanged. Port 6 = CPU (SGMII,
+		# GMAC1), 4 = wan, 1-3 = lan3/lan2/lan1. GMAC0 is wired to the
+		# switch's PHY 4 as well, but the DTS gives it no port, so it stays
+		# out of the fabric - it still takes eth0, which makes the trunk eth1.
 		fw_mask='0x2'
 		trunk='eth1'
 		trunk_if='1'

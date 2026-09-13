@@ -304,12 +304,13 @@ The board side is small. The parts, in order of effort:
    Every IPQ5018 board in `02_network` has an entry in the table
    (`nss-dwmac.defaults`, keyed on `board_name`, started by George
    Moussalem). Run on the board: GL-B3000, Linksys MX2000, SPNMX56 and
-   MX6200, Xunison D50. Straight from the DTS, untested: Linksys MX5500
-   and MR5500 (the MR5500 wiring loads, but its DMA has not started yet),
-   Xiaomi AX6000 and Redmi AX5400, Zyxel SCR50AXE, CMCC MR3000D-CI and
-   PZ-L8, I-O DATA WN-DAX3000GR, Elecom WRC-X3000GS2 / GST2, Yuncore AX830
-   and AX850. On those the settings apply themselves on first boot. Anything
-   else logs a line telling you to set them by hand.
+   MX6200, Xunison D50, CMCC MR3000D-CI (wired plane and 5 GHz offload on
+   the table entry as written). Straight from the DTS, untested: Linksys
+   MX5500 and MR5500 (the MR5500 wiring loads, but its DMA has not started
+   yet), Xiaomi AX6000 and Redmi AX5400, Zyxel SCR50AXE, CMCC PZ-L8, I-O
+   DATA WN-DAX3000GR, Elecom WRC-X3000GS2 / GST2, Yuncore AX830 and AX850.
+   On those the settings apply themselves on first boot. Anything else logs
+   a line telling you to set them by hand.
 
 3. **The switch.** Find your MDIO device names with
    `ls /sys/bus/mdio_bus/devices/` and set `bus_via` / `wake_phys` from them;
