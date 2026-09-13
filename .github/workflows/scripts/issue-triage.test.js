@@ -15,14 +15,14 @@ for (const [k, v] of Object.entries(F))
 
 // Dropdown answers the routing rules match on must still be offerable.
 for (const opt of ['qosmio/openwrt-ipq image', 'Official OpenWrt image (no NSS)', 'Another NSS build',
-	'Prebuilt release image (Qualcommax NSS Builder)', 'Self-built from this repo (nss-edma-rework)',
+	'Release image (GL-B3000, ipq50xx-b3000-* tag)', 'Self-built from this repo (ipq50xx-rebase)',
 	'Yes — and an official OpenWrt image is broken the same way', 'Not tested yet'])
 	assert.ok(form.includes(opt), `bug.yml no longer offers "${opt}"`);
 
 const good = {
-	[F.image]: 'Prebuilt release image (Qualcommax NSS Builder)',
+	[F.image]: 'Release image (GL-B3000, ipq50xx-b3000-* tag)',
 	[F.gate]: 'No — with the offload off the box is fine',
-	[F.state]: '```text\n{"kernel":"6.18.1",...}\nnss.general.enabled=\'1\'\nNSS offload status: up\n```',
+	[F.state]: '```text\n{"kernel":"6.18.44",...}\nnss.general.enabled=\'1\'\nfw_mask: 0x2\nphys_if 1: started dev=eth0 fw_link=up\n```',
 	[F.what]: 'The WAN port stops transmitting after a few hours and never comes back.',
 	[F.steps]: '1. Flash the release image\n2. Enable SQM on wan\n3. Run iperf3 -c host -R for an hour',
 	[F.expected]: 'Traffic keeps flowing.',
@@ -67,8 +67,12 @@ const incomplete = (over, needle) => {
 
 incomplete({ [F.gate]: 'Not tested yet' }, 'Whose bug this is');
 incomplete({ [F.state]: 'see attached screenshot' }, '`ubus call system board`');
-incomplete({ [F.state]: good[F.state].replace('NSS offload status: up', '') }, '`nss-status -d`');
-incomplete({ [F.image]: 'Self-built from this repo (nss-edma-rework)' }, 'Diffconfig');
+incomplete({ [F.state]: good[F.state].replace('fw_mask: 0x2\nphys_if 1: started dev=eth0 fw_link=up', '') },
+	'`cat /sys/kernel/debug/qca-dwmac-nss/status`');
+// A plane that never came up has no status file; the busybox error is a complete answer.
+assert.strictEqual(triage(body({ [F.state]: good[F.state].replace('fw_mask: 0x2\nphys_if 1: started dev=eth0 fw_link=up',
+	"cat: can't open '/sys/kernel/debug/qca-dwmac-nss/status': No such file or directory") })).verdict, 'ok');
+incomplete({ [F.image]: 'Self-built from this repo (ipq50xx-rebase)' }, 'Diffconfig');
 incomplete({ [F.what]: 'N/A' }, 'What happens');
 incomplete({ [F.steps]: 'browsing the web' }, 'Steps to reproduce');
 incomplete({ [F.regression]: '' }, 'Last image that worked');
@@ -76,14 +80,16 @@ incomplete({ [F.logs]: 'nothing in the log' }, 'Logs');
 incomplete({ [F.netcfg]: 'default config' }, 'Network and wireless config');
 incomplete({ [F.what]: 'The router panics after a day of uptime.' }, 'The crash log');
 
-// A crash report that brought its ramoops is complete.
-assert.strictEqual(triage(body({
-	[F.what]: 'The router panics after a day of uptime.',
-	[F.logs]: `${good[F.logs]}\nattached /root/pstore/20260803-abc/console-ramoops-0`,
-})).verdict, 'ok');
+// No pstore on IPQ5018: a crash report with the serial console output is complete,
+// and so is one that says there is no serial console.
+for (const note of ['serial console output:\n[ 81.2] Unable to handle kernel paging request',
+	'no serial console on this board, it rebooted at 03:12'])
+	assert.strictEqual(triage(body({
+		[F.what]: 'The router panics after a day of uptime.',
+		[F.logs]: `${good[F.logs]}\n${note}`,
+	})).verdict, 'ok', note);
 
-// 11.4 / mesh reports stay visibly as-is, complete or not.
-assert.ok(triage(body({ [F.what]: 'Mesh peers drop after a reconnect.' })).add.includes('as-is'));
-assert.ok(!triage(body()).add.includes('as-is'));
+// Nothing on IPQ5018 is labelled as-is: a report mentioning mesh is triaged like any other.
+assert.ok(!triage(body({ [F.what]: 'Mesh peers drop after a reconnect.' })).add.includes('as-is'));
 
 console.log('issue-triage: ok');

@@ -100,7 +100,9 @@ function triage(body) {
 	const cmds = [
 		['`ubus call system board`', /"kernel"/],
 		['`uci show nss`', /nss\.general/],
-		['`nss-status -d`', /NSS offload status:/],
+		// busybox cat prints the path and "No such file or directory" when the glue
+		// never loaded - that is the answer for a plane that did not come up.
+		['`cat /sys/kernel/debug/qca-dwmac-nss/status`', /fw_mask:|No such file or directory/],
 	].filter(([, m]) => !m.test(state)).map(([c]) => c);
 	if (cmds.length)
 		ask(`**Build and runtime state** is missing the output of ${cmds.join(', ')}. ` +
@@ -123,16 +125,19 @@ function triage(body) {
 		ask('**Logs** - `logread` and `dmesg` from the boot that shows the bug, not a picked line.');
 
 	const crashed = /panic|crash|reboot|reset itself|watchdog|oops|hang/i.test(`${f[F.what]} ${f[F.logs]}`);
-	if (crashed && !/ramoops|pstore/i.test(body))
-		ask('**The crash log.** A box that panicked wrote one: attach the whole newest ' +
-			'`/root/pstore/*/console-ramoops-*` as a file. Without it the cause is guesswork, and ' +
-			'a truncated tail is usually cut exactly where the trap is.');
+	// IPQ5018 kernels are built without pstore, so a panic leaves nothing on the box:
+	// the serial console is the only crash log there is, and saying there is none is
+	// an answer too.
+	if (crashed && !/serial console|uart|ramoops|pstore/i.test(body))
+		ask('**The crash log.** IPQ5018 images have no pstore, so nothing survives the ' +
+			'reboot: paste the whole serial console output from the crash, or write "no serial ' +
+			'console" and say exactly when it happened. Without it the cause is guesswork.');
 
 	if (!/config\s+(interface|wifi-iface|device|zone)/.test(f[F.netcfg] || ''))
 		ask('**Network and wireless config** - the `uci export` output, secrets removed. ' +
 			'Bridge, VLAN and SQM shape are what most of these bugs turn on.');
 
-	const add = /(^|[^\d.])11\.4|mesh|802\.11s/i.test(body) ? ['as-is'] : [];
+	const add = [];
 
 	if (!missing.length)
 		return { verdict: 'ok', add, remove: ['needs-info', 'no-response'], close: false, comment: null };

@@ -1,18 +1,15 @@
 ---
 blank_issues_enabled: false
 contact_links:
-  - name: Prebuilt images for every IPQ807x device
-    url: https://github.com/JuliusBairaktaris/Qualcommax_NSS_Builder/releases/latest
-    about: One image set per device, rebuilt as this tree moves. Reproduce on it before filing — a self-built image carries a config nobody else has.
+  - name: GL-B3000 release image
+    url: https://github.com/kuncy7/openwrt-nss-edma/releases/latest
+    about: The one board with a published image. Reproduce on it before filing if you have that board — a self-built image carries a config nobody else has.
   - name: The bug also happens on an official OpenWrt image
     url: https://github.com/openwrt/openwrt/issues/new/choose
     about: Then it is not this fork's bug. Report it to OpenWrt itself — this tracker only covers what the NSS offload path adds on top.
-  - name: qosmio/openwrt-ipq images
-    url: https://github.com/qosmio/openwrt-ipq/issues
-    about: A different NSS build with a different driver stack. Its bugs belong to it.
-  - name: Help, configuration and general NSS questions
-    url: https://forum.openwrt.org/t/ipq807x-nss-build/148529
-    about: The forum thread. Questions answered there stay findable for the next person.
-  - name: Documentation and known limitations
-    url: https://github.com/JuliusBairaktaris/openwrt-nss-edma/wiki
-    about: Hardware support, runtime operation, SQM, and what is deliberately not supported.
+  - name: Help, configuration and general questions
+    url: https://forum.openwrt.org/t/ipq5018-nss-offload-on-kernel-6-18-with-the-upstream-ethernet-stack-gl-b3000/253014
+    about: The forum thread for IPQ5018 NSS on this tree. Questions answered there stay findable for the next person.
+  - name: Board status, porting and known limitations
+    url: https://github.com/kuncy7/openwrt-nss-edma/blob/ipq50xx-rebase/README.ipq50xx.md
+    about: Which boards have been run, how the plane comes up, the uci knobs, and what is not carried for IPQ5018.

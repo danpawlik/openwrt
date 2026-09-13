@@ -1,5 +1,5 @@
 name: Anything else
-description: Device support, a proposal, a tracking note — not a bug report
+description: Board support, a proposal, a tracking note — not a bug report
 labels: ["needs-triage"]
 body:
   - type: markdown
@@ -7,7 +7,10 @@ body:
       value: |
         Something broken on an image from this tree goes in the **Bug report** form
         instead; this one is not triaged for completeness. Questions belong in the
-        [forum thread](https://forum.openwrt.org/t/ipq807x-nss-build/148529).
+        [forum thread](https://forum.openwrt.org/t/ipq5018-nss-offload-on-kernel-6-18-with-the-upstream-ethernet-stack-gl-b3000/253014).
+
+        Reporting a board that now works? Say which one, which image or commit, and
+        paste `cat /sys/kernel/debug/qca-dwmac-nss/status` and your measurements.
   - type: textarea
     id: body
     attributes:
