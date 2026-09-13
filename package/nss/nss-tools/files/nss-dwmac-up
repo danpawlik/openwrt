@@ -12,7 +12,13 @@ set -e
 
 GLUE_STATUS=/sys/kernel/debug/qca-dwmac-nss/status
 FWM=/sys/kernel/debug/qca-dwmac-nss/fw_mask
-TRUNK="$(uci -q get nss.general.trunk)"
+# Every optional uci read here carries "|| VAR=''": under set -e an
+# assignment from a failing command substitution ends the script, and
+# 'uci -q get' fails for an option that is not set. The board table sets
+# all of them, so a known board never noticed; a board without an entry
+# died right here, before the arm and before ath11k - no firmware plane
+# and, with wifi_offload=1, no radios (measured on a GL-B3000, E287).
+TRUNK="$(uci -q get nss.general.trunk)" || TRUNK=''
 [ -n "$TRUNK" ] || TRUNK=eth0
 
 # Arm the firmware data plane only once netifd has FINISHED with the
@@ -45,7 +51,7 @@ poll_until 15 eth_promisc || echo "WARN: $TRUNK not promiscuous after 15s, armin
 sleep 3
 
 if [ "$(cat $FWM 2>/dev/null)" = "0x0" ]; then
-  MASK="$(uci -q get nss.general.fw_mask)"
+  MASK="$(uci -q get nss.general.fw_mask)" || MASK=''
   [ -n "$MASK" ] || MASK=0x2
   echo "$MASK" > $FWM 2>/dev/null
 fi
@@ -53,7 +59,7 @@ fi
 # Wi-Fi offload is loaded from here, not from the service, because ath11k
 # checks the NSS core state when it registers wifili (see the note in the
 # init script). WIFI_DEFERRED is set when the service left it to us.
-WIFI_OFFLOAD="$(uci -q get nss.general.wifi_offload)"
+WIFI_OFFLOAD="$(uci -q get nss.general.wifi_offload)" || WIFI_OFFLOAD=''
 [ "$WIFI_OFFLOAD" = "1" ] || WIFI_OFFLOAD=0
 WIFI_LOADED_HERE=0
 
@@ -213,7 +219,7 @@ set +e
 
 # Firmware log ring, readable through /sys/kernel/debug/qca-nss-drv/logs
 # and large enough that a trap burst does not overwrite itself.
-FWLOG="$(uci -q get nss.general.fw_logbuf)"
+FWLOG="$(uci -q get nss.general.fw_logbuf)" || FWLOG=''
 [ -n "$FWLOG" ] || FWLOG=256
 [ "$FWLOG" -ge 32 ] 2>/dev/null && sysctl -qw dev.nss.general.logbuf="$FWLOG"
 
