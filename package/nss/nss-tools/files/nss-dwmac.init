@@ -154,6 +154,15 @@ start_service() {
 		echo "$ifmap" > /sys/kernel/debug/qca-dwmac-nss/ifmap
 	modprobe qca-nss-drv 2>/dev/null
 
+	# RA74 DMA descriptors: this board stalls with the firmware's UTCM rings.
+	# Set the allocation before the deferred core boots; retain explicit overrides.
+	if [ "$(board_name)" = "xiaomi,redmi-ax5400" ]; then
+		local memcfg
+		memcfg="$(cat /sys/module/qca_nss_drv/parameters/meminfo_user_config)" || { wifi_load 0; return 1; }
+		[ -n "$memcfg" ] ||
+			printf '%s\n' '<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>' > /sys/module/qca_nss_drv/parameters/meminfo_user_config || { wifi_load 0; return 1; }
+	fi
+
 	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.
 	# ath11k registers the wifili interface at module load and checks the
 	# NSS core state right there: nss_cmn_get_state() != INITIALIZED makes
