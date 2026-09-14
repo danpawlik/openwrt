@@ -69,6 +69,15 @@ jobs:
       - name: Install busybox
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends busybox-static
 
+      - name: Check RA74 descriptor allocation
+        run: |
+          python3 package/nss/nss-tools/tests/ra74-dma.test.py
+          bb="$(mktemp -d)"
+          ln -s "$(command -v busybox)" "$bb/sh"
+          NSS_TEST_SH="$bb/sh" python3 package/nss/nss-tools/tests/ra74-dma.test.py
+          rm "$bb/sh"
+          rmdir "$bb"
+
       - name: Run the suite
         run: bash package/nss/nss-tools/tests/nss-status.test.sh
 
