@@ -229,6 +229,7 @@ migrates an existing DSA-style network config once (`br-lan` ports →
 | `fabric` | `qca8337` | `none` on a board with no switch: skips the qca8k unbind and the fabric module. |
 | `switch_dev` | `90000.mdio-1:11` | the switch's MDIO device, unbound from `qca8k` before the re-arm. `90000.mdio-1:18` on the I-O DATA WN-DAX3000GR and the Elecom WRC-X3000GS2 / GST2. |
 | `switch_args` | *(empty)* | further `qca8337-nss` parameters, passed verbatim (`cpu_port=`, `ports=`, `wake_phys=`, `bus_via=`) |
+| `meminfo` | *(empty; GMAC1's rings in SDRAM on the Redmi AX5400)* | where the firmware keeps the GMAC descriptor rings, written to `qca-nss-drv`'s `meminfo_user_config` before the core boots, e.g. `<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>`. With GMAC1's rings in the default `UTCM_SHARED` the AX5400's port never starts (`rs=0 ts=0`, `rx_fw=0`) - worth trying on any board with that symptom (MR5500, AX6000 WAN). `default` keeps the firmware's placement on the AX5400. `grep gmac /sys/kernel/debug/qca-nss-drv/meminfo/core0` shows where they ended up. |
 | `fw_logbuf` | `256` | firmware log ring size, read at `/sys/kernel/debug/qca-nss-drv/logs` |
 
 There is no runtime detach. `/etc/init.d/nss stop` prints how to disable the

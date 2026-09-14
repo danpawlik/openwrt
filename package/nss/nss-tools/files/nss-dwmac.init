@@ -154,13 +154,31 @@ start_service() {
 		echo "$ifmap" > /sys/kernel/debug/qca-dwmac-nss/ifmap
 	modprobe qca-nss-drv 2>/dev/null
 
-	# RA74 DMA descriptors: this board stalls with the firmware's UTCM rings.
-	# Set the allocation before the deferred core boots; retain explicit overrides.
-	if [ "$(board_name)" = "xiaomi,redmi-ax5400" ]; then
-		local memcfg
+	# GMAC descriptor rings: where the firmware keeps each GMAC's DMA rings.
+	# qca-nss-drv reads meminfo_user_config when the core boots, which is
+	# deferred until a port is armed, so writing it here is in time. By
+	# default GMAC1's rings go to UTCM_SHARED: fine on the GL-B3000 and the
+	# AX55, but on the Redmi AX5400 the port never starts its DMA (rs=0
+	# ts=0, rx_fw=0) until they are in SDRAM (PR #1). nss.general.meminfo
+	# sets the value on any board - the MR5500 and the AX6000 WAN show the
+	# same symptom - and 'default' keeps the firmware's placement on the
+	# AX5400. An override already in the parameter is kept.
+	local memcfg want
+	want="$(uci -q get nss.general.meminfo)" || want=''
+	case "$want" in
+	default)
+		want=''
+		;;
+	'')
+		[ "$(board_name)" = "xiaomi,redmi-ax5400" ] &&
+			want='<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>'
+		;;
+	esac
+	if [ -n "$want" ]; then
 		memcfg="$(cat /sys/module/qca_nss_drv/parameters/meminfo_user_config)" || { wifi_load 0; return 1; }
 		[ -n "$memcfg" ] ||
-			printf '%s\n' '<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>' > /sys/module/qca_nss_drv/parameters/meminfo_user_config || { wifi_load 0; return 1; }
+			printf '%s\n' "$want" > /sys/module/qca_nss_drv/parameters/meminfo_user_config || { wifi_load 0; return 1; }
+		logger -t nss "GMAC descriptor rings: meminfo_user_config=${memcfg:-$want}"
 	fi
 
 	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.
