@@ -222,7 +222,7 @@ migrates an existing DSA-style network config once (`br-lan` ports →
 | `enabled` | `1` | `0` = stay on the host stack (same topology, no firmware) |
 | `wifi_offload` | `1` | load ath11k with `nss_offload=1`, after the arm. Needs ath11k built with NSS support (the service warns if it is not). `0` = Wi-Fi on the host path. |
 | `fw_mask` | `0x2` | bitmask of GMACs to hand to the firmware; bit N = GMAC N, and every bit needs a netdev (`trunk` / `extra_ports`). `0x3` arms both; two GMACs have run on the Linksys SPNMX56 and MX6200 and the Xunison D50 (see *Porting*). |
-| `vtu` | *(B3000 wiring on the B3000, empty elsewhere)* | VTU program for `qca8337-nss`; empty = VTU off, the switch stays one untagged LAN. Only needed when WAN shares the trunk (see *Porting*) |
+| `vtu` | *(B3000 wiring on the B3000, empty elsewhere)* | VTU program for `qca8337-nss`; empty = VTU off, the switch stays one untagged LAN. Needed when WAN shares the trunk, and for every further VLAN - an ISP's tagged VLAN, a VLAN per SSID - which the switch drops unless it is listed (examples in *Porting*) |
 | `trunk` | `eth0` | the switch trunk netdev. `eth1` on a board whose GMAC0 has a netdev of its own - a WAN PHY (Xunison D50, Zyxel SCR50AXE) or a second link into the switch (Redmi AX5400, CMCC PZ-L8); `lan` on the MX6200, which has no switch. |
 | `trunk_if` | `1` | which GMAC the trunk is = its NSS phys_if. `0` where the switch hangs off GMAC0 (SPNMX56, AX6000) or there is no switch (MX6200). |
 | `extra_ports` | *(empty)* | other GMACs in use, as `<if>:<netdev>` entries - the D50's ethernet WAN is `0:wan`, the SPNMX56's 2.5G PHY `1:wan`. Named here, armed by `fw_mask`. |
@@ -331,6 +331,18 @@ The board side is small. The parts, in order of effort:
    A board whose CPU port is not 0 was the one thing the fabric re-arm could
    not do until the `cpu_port` / `ports` parameters; with them the module
    carries no board assumption of its own any more.
+
+   **More VLANs than lan and wan.** The switch carries only the VLANs listed
+   in `vtu`; a VLAN missing there is dropped inside the switch, with nothing
+   on the host. Each VLAN needs the CPU port tagged plus the ports it rides
+   on, and the numbers are switch ports, not panel labels. Netifd then uses
+   `<trunk>.<vid>` like any 802.1Q device. The module reads the map at boot,
+   so reboot after changing it. Two layouts that run:
+
+   | Use | Board | `vtu` | Netifd |
+   |---|---|---|---|
+   | ISP hands PPPoE over tagged VLAN 35 on the WAN jack | Linksys MX2000 (LS3434) | `1:6t,3u,4u,5u;35:6t,2t` | `eth0.35` as the PPPoE device |
+   | Dumb AP: lan3 is a tagged uplink with VLANs 10-13 and 40; lan1, lan2 and the WAN jack are untagged ports in VLAN 10 | CMCC MR3000D-CI (csharper2005) - ports 1-3 = lan3/lan2/lan1, 4 = wan, 6 = CPU | `10:6t,1t,2u,3u,4u;11:6t,1t;12:6t,1t;13:6t,1t;40:6t,1t` | `eth1.10` … `eth1.40` in their bridges |
 
 Also: a board whose WAN is on the internal GE PHY (GMAC0), like the D50, needs
 no VTU at all - the switch only carries LANs, `vlans` can stay empty - and the
