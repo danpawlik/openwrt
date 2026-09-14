@@ -21,7 +21,9 @@ cases = [('xiaomi,redmi-ax5400', None, '', sdram, 0),
          ('glinet,gl-b3000', None, '', '', 0),
          ('xiaomi,redmi-ax5400', None, None, None, 1),
          ('linksys,mr5500', custom, '', custom + '\n', 0),
-         ('xiaomi,redmi-ax5400', 'default', '', '', 0)]
+         ('xiaomi,redmi-ax5400', 'default', '', '', 0),
+         ('linksys,mr5500', None, '', sdram, 0),
+         ('xiaomi,ax6000', None, '', sdram, 0)]
 with tempfile.TemporaryDirectory(prefix='ra74-dma-check-') as directory:
     path = Path(directory) / 'parameter'
     for board, uci, initial, result, code in cases:
@@ -44,4 +46,4 @@ with tempfile.TemporaryDirectory(prefix='ra74-dma-check-') as directory:
         else:
             assert 'wifi-load:0' in actual.stdout, 'Failure must preserve host Wi-Fi recovery'
 print('PASS: RA74 default, explicit override, other board, missing parameter with Wi-Fi recovery, '
-      'uci value on another board, uci default on RA74')
+      'uci value on another board, uci default on RA74, MR5500 and AX6000 defaults')

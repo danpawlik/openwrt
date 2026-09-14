@@ -158,11 +158,12 @@ start_service() {
 	# qca-nss-drv reads meminfo_user_config when the core boots, which is
 	# deferred until a port is armed, so writing it here is in time. By
 	# default GMAC1's rings go to UTCM_SHARED: fine on the GL-B3000 and the
-	# AX55, but on the Redmi AX5400 the port never starts its DMA (rs=0
-	# ts=0, rx_fw=0) until they are in SDRAM (PR #1). nss.general.meminfo
-	# sets the value on any board - the MR5500 and the AX6000 WAN show the
-	# same symptom - and 'default' keeps the firmware's placement on the
-	# AX5400. An override already in the parameter is kept.
+	# AX55, but on the Redmi AX5400, the MR5500 and the AX6000 the port
+	# never starts its DMA (rs=0 ts=0, rx_fw=0) until they are in SDRAM
+	# (PR #1; MR5500 and AX6000 confirmed in forum #331-#336).
+	# nss.general.meminfo sets the value on any board, and 'default' keeps
+	# the firmware's placement on these three. An override already in the
+	# parameter is kept.
 	local memcfg want
 	want="$(uci -q get nss.general.meminfo)" || want=''
 	case "$want" in
@@ -170,8 +171,11 @@ start_service() {
 		want=''
 		;;
 	'')
-		[ "$(board_name)" = "xiaomi,redmi-ax5400" ] &&
+		case "$(board_name)" in
+		linksys,mr5500|xiaomi,ax6000|xiaomi,redmi-ax5400)
 			want='<0, gmac_tx_desc_1, SDRAM>, <0, gmac_rx_desc_1, SDRAM>'
+			;;
+		esac
 		;;
 	esac
 	if [ -n "$want" ]; then
