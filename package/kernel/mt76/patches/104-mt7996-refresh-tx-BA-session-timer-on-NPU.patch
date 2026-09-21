@@ -1,0 +1,37 @@
+From: Chris Scott <gilroyscott1970@gmail.com>
+Date: Fri, 18 Sep 2026 19:16:59 +1000
+Subject: [PATCH] mt7996: refresh the tx BA session timer on NPU devices
+
+mt7996_mac_add_txs_skb() refreshes mac80211's tx BlockAck session timer
+only when a WED device is active. Airoha boards offload through the NPU
+instead, so on those the condition is never true and nothing keeps the
+timer alive.
+
+NPU-forwarded frames do not traverse mac80211, and the only other places
+that stamp tid_tx->last_tx are in the software tx path. When the peer
+negotiates a non-zero BlockAck timeout in the ADDBA response (Intel
+stations commonly do, most others answer 0) mac80211 arms
+tid_tx->session_timer, which then expires in the middle of an offloaded
+transfer and tears the session down with a DELBA.
+
+Extend the check with mt76_npu_device_active(). TXS reports do arrive
+for NPU-forwarded frames, which is enough to keep a seconds-scale
+session timer alive.
+
+Link: https://lists.openwall.net/linux-kernel/2026/09/18/1149
+Link: https://forum.openwrt.org/t/quantum-fiber-w1700k-support/222776/3900
+Fixes: 377aa17d2aed ("wifi: mt76: mt7996: Add NPU offload support to MT7996 driver")
+Signed-off-by: Chris Scott <gilroyscott1970@gmail.com>
+---
+--- a/mt7996/mac.c
++++ b/mt7996/mac.c
+@@ -1508,7 +1508,8 @@
+ 		}
+ 	}
+ 
+-	if (mtk_wed_device_active(&dev->mt76.mmio.wed) && wcid->sta) {
++	if ((mtk_wed_device_active(&dev->mt76.mmio.wed) ||
++	     mt76_npu_device_active(&dev->mt76)) && wcid->sta) {
+ 		struct ieee80211_sta *sta;
+ 		u8 tid;
+ 
