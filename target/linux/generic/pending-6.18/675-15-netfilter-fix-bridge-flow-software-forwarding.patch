@@ -1,0 +1,262 @@
+Subject: [PATCH] netfilter: make bridge flow offload preserve L2 forwarding
+
+A connection routed through an external router can cross a bridge more
+than once with the same transport tuple. Validate the Ethernet addresses
+before consuming a software flow hit, leaving other L2 segments on the
+normal bridge path. Keep the existing one-flow-per-conntrack lifetime.
+Clear old encapsulation keys when rebuilding a tuple, including unused
+slots: the hash covers the whole encapsulation array.
+
+Restore the single egress VLAN tag from the reverse tuple in skb metadata.
+Do not perform routed TTL, hop-limit, NAT or DSCP transformations on
+bridge traffic. Allow TTL/hop-limit 1 on bridges.
+Limit bridge software admission to unencapsulated and single 802.1Q
+traffic until the other encapsulations have a complete software path.
+Reject NAT flows, since this path deliberately preserves IP headers.
+
+Reject hardware bridge flowtables for now: the current rules and drivers
+do not enforce the full L2 identity. A software MAC check cannot protect
+packets already consumed by hardware. Userspace must retry without flags
+offload (the accompanying firewall4 lifecycle patch already does this).
+Routed hardware offload is unaffected. Do not attach the routed XDP path
+to bridge flowtables either.
+
+Link: https://github.com/openwrt/openwrt/pull/24038#issuecomment-5790185621
+---
+--- a/net/netfilter/nf_flow_table_inet.c
++++ b/net/netfilter/nf_flow_table_inet.c
+@@ -65,10 +65,23 @@
+ 	return err;
+ }
+ 
++/* The current bridge rules cannot enforce the full L2 match in hardware.
++ * Reject the hardware flowtable so userspace can retry with software offload.
++ */
++static int nf_flow_bridge_offload_setup(struct nf_flowtable *flowtable,
++					struct net_device *dev,
++					enum flow_block_command cmd)
++{
++	if (nf_flowtable_hw_offload(flowtable))
++		return -EOPNOTSUPP;
++
++	return 0;
++}
++
+ static struct nf_flowtable_type flowtable_bridge = {
+ 	.family		= NFPROTO_BRIDGE,
+ 	.init		= nf_flow_table_init,
+-	.setup		= nf_flow_table_offload_setup,
++	.setup		= nf_flow_bridge_offload_setup,
+ 	.action		= nf_flow_rule_bridge,
+ 	.free		= nf_flow_table_free,
+ 	.hook		= nf_flow_offload_inet_hook,
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -8,6 +8,7 @@
+ #include <linux/ipv6.h>
+ #include <linux/netdevice.h>
+ #include <linux/if_ether.h>
++#include <linux/etherdevice.h>
+ #include <net/gso.h>
+ #include <net/ip.h>
+ #include <net/ipv6.h>
+@@ -169,6 +170,7 @@
+ }
+ 
+ struct nf_flowtable_ctx {
++	bool			bridge;
+ 	const struct net_device	*in;
+ 	u32			offset;
+ 	u32			hdrsize;
+@@ -211,7 +213,7 @@
+ 		return -1;
+ 	}
+ 
+-	if (iph->ttl <= 1)
++	if (!ctx->bridge && iph->ttl <= 1)
+ 		return -1;
+ 
+ 	if (!pskb_may_pull(skb, thoff + ctx->hdrsize))
+@@ -334,6 +336,18 @@
+ 	}
+ }
+ 
++static void nf_flow_bridge_encap_push(struct sk_buff *skb,
++				      const struct flow_offload *flow,
++				      enum flow_offload_tuple_dir dir)
++{
++	const struct flow_offload_tuple *tuple = &flow->tuplehash[!dir].tuple;
++
++	/* Bridge admission allows at most one 802.1Q tag. */
++	if (tuple->encap_num && !(tuple->in_vlan_ingress & BIT(0)))
++		__vlan_hwaccel_put_tag(skb, tuple->encap[0].proto,
++				       tuple->encap[0].id);
++}
++
+ struct nf_flow_xmit {
+ 	const void		*dest;
+ 	const void		*source;
+@@ -389,6 +403,14 @@
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+ 
++	/* The same connection may cross this bridge on another L2 segment. */
++	if (ctx->bridge &&
++	    (!ether_addr_equal(eth_hdr(skb)->h_source,
++			       tuplehash->tuple.out.h_source) ||
++	     !ether_addr_equal(eth_hdr(skb)->h_dest,
++			       tuplehash->tuple.out.h_dest)))
++		return 0;
++
+ 	mtu = flow->tuplehash[dir].tuple.mtu + ctx->offset;
+ 	if (unlikely(nf_flow_exceeds_mtu(skb, mtu)))
+ 		return 0;
+@@ -411,10 +433,16 @@
+ 	nf_flow_encap_pop(skb, tuplehash);
+ 	thoff -= ctx->offset;
+ 
++	if (ctx->bridge) {
++		nf_flow_bridge_encap_push(skb, flow, dir);
++		goto clear_tstamp;
++	}
++
+ 	iph = ip_hdr(skb);
+ 	nf_flow_nat_ip(flow, skb, thoff, dir, iph);
+ 
+ 	ip_decrease_ttl(iph);
++clear_tstamp:
+ 	skb_clear_tstamp(skb);
+ 
+ 	if (flow_table->flags & NF_FLOWTABLE_COUNTER)
+@@ -432,6 +460,7 @@
+ 	enum flow_offload_tuple_dir dir;
+ 	struct nf_flowtable_ctx ctx = {
+ 		.in	= state->in,
++		.bridge	= flow_table->type->family == NFPROTO_BRIDGE,
+ 	};
+ 	struct nf_flow_xmit xmit = {};
+ 	struct flow_offload *flow;
+@@ -630,7 +659,7 @@
+ 		return -1;
+ 	}
+ 
+-	if (ip6h->hop_limit <= 1)
++	if (!ctx->bridge && ip6h->hop_limit <= 1)
+ 		return -1;
+ 
+ 	if (!pskb_may_pull(skb, thoff + ctx->hdrsize))
+@@ -678,6 +707,14 @@
+ 	dir = tuplehash->tuple.dir;
+ 	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+ 
++	/* The same connection may cross this bridge on another L2 segment. */
++	if (ctx->bridge &&
++	    (!ether_addr_equal(eth_hdr(skb)->h_source,
++			       tuplehash->tuple.out.h_source) ||
++	     !ether_addr_equal(eth_hdr(skb)->h_dest,
++			       tuplehash->tuple.out.h_dest)))
++		return 0;
++
+ 	mtu = flow->tuplehash[dir].tuple.mtu + ctx->offset;
+ 	if (unlikely(nf_flow_exceeds_mtu(skb, mtu)))
+ 		return 0;
+@@ -699,10 +736,16 @@
+ 
+ 	nf_flow_encap_pop(skb, tuplehash);
+ 
++	if (ctx->bridge) {
++		nf_flow_bridge_encap_push(skb, flow, dir);
++		goto clear_tstamp;
++	}
++
+ 	ip6h = ipv6_hdr(skb);
+ 	nf_flow_nat_ipv6(flow, skb, dir, ip6h);
+ 
+ 	ip6h->hop_limit--;
++clear_tstamp:
+ 	skb_clear_tstamp(skb);
+ 
+ 	if (flow_table->flags & NF_FLOWTABLE_COUNTER)
+@@ -737,6 +780,7 @@
+ 	enum flow_offload_tuple_dir dir;
+ 	struct nf_flowtable_ctx ctx = {
+ 		.in	= state->in,
++		.bridge	= flow_table->type->family == NFPROTO_BRIDGE,
+ 	};
+ 	struct nf_flow_xmit xmit = {};
+ 	struct flow_offload *flow;
+--- a/net/netfilter/nf_flow_table_path.c
++++ b/net/netfilter/nf_flow_table_path.c
+@@ -339,6 +339,9 @@
+ 	if (!info.indev || info.indev != dst_dev)
+ 		return -1;
+ 
++	/* Unused encapsulation slots are also part of the lookup key. */
++	memset(th[!dir].tuple.encap, 0, sizeof(th[!dir].tuple.encap));
++	th[!dir].tuple.in_vlan_ingress = 0;
+ 	th[!dir].tuple.iifidx = info.indev->ifindex;
+ 	for (i = info.num_encaps - 1; i >= 0; i--) {
+ 		th[!dir].tuple.encap[j].id = info.encap[i].id;
+@@ -369,6 +372,21 @@
+ 	struct flow_offload_tuple *tuple;
+ 	int err, i = 0;
+ 
++	/* This fast path preserves L3 headers and cannot perform bridge NAT. */
++	if (test_bit(NF_FLOW_SNAT, &flow->flags) ||
++	    test_bit(NF_FLOW_DNAT, &flow->flags))
++		return -EOPNOTSUPP;
++
++	/* The receive path has moved a single VLAN header into skb metadata.
++	 * Leave PPPoE and any remaining stacked headers on the bridge path.
++	 */
++	if (pkt->skb->protocol != htons(ETH_P_IP) &&
++	    pkt->skb->protocol != htons(ETH_P_IPV6))
++		return -EOPNOTSUPP;
++	if (skb_vlan_tag_present(pkt->skb) &&
++	    pkt->skb->vlan_proto != htons(ETH_P_8021Q))
++		return -EOPNOTSUPP;
++
+ 	in_dev = nft_in(pkt);
+ 	if (!in_dev || !nft_flowtable_find_dev(in_dev, ft))
+ 		return -1;
+@@ -385,25 +403,6 @@
+ 		i++;
+ 	}
+ 
+-	switch (eth_hdr(pkt->skb)->h_proto) {
+-	case htons(ETH_P_8021Q): {
+-		struct vlan_hdr *vhdr = (struct vlan_hdr *)(skb_mac_header(pkt->skb)
+-					 + sizeof(struct ethhdr));
+-		tuple->encap[i].id = ntohs(vhdr->h_vlan_TCI);
+-		tuple->encap[i].proto = htons(ETH_P_8021Q);
+-		i++;
+-		break;
+-	}
+-	case htons(ETH_P_PPP_SES): {
+-		struct pppoe_hdr *phdr = (struct pppoe_hdr *)(skb_mac_header(pkt->skb)
+-					  + sizeof(struct ethhdr));
+-
+-		tuple->encap[i].id = ntohs(phdr->sid);
+-		tuple->encap[i].proto = htons(ETH_P_PPP_SES);
+-		i++;
+-		break;
+-	}
+-	}
+ 	tuple->encap_num = i;
+ 
+ 	err = nft_dev_fill_bridge_path(flow, ft, !dir, out_dev, in_dev,
+@@ -416,6 +415,14 @@
+ 	if (err < 0)
+ 		return err;
+ 
++	for (i = 0; i < FLOW_OFFLOAD_DIR_MAX; i++) {
++		tuple = &flow->tuplehash[i].tuple;
++		if (tuple->encap_num > 1 ||
++		    (tuple->encap_num &&
++		     tuple->encap[0].proto != htons(ETH_P_8021Q)))
++			return -EOPNOTSUPP;
++	}
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(flow_offload_bridge_init);
