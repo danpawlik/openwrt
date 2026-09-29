@@ -1,0 +1,49 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [PATCH] net: phy: realtek: disable Pause advertising on RTL826x
+
+RTL826x copper AN defaults to advertising Symmetric Pause (MMD 7.0x0010).
+On hosts such as the Airoha AN7581 GDM4 path (Gemtek W1700K lan2), XFI
+pause toward the PCS can be gated in the PCS driver, but copper pause
+with the link partner still negotiates and stalls PHY transmit under
+upload load. airoha_eth does not implement ethtool -A, so the partner
+cannot keep pause forced off across reboot.
+
+Clearing Pause only in rtl826x_get_features() is not enough: phylink
+re-adds Pause to phydev->advertising from MAC pause capabilities before
+config_aneg(). Also clear Pause/Asym_Pause from advertising in
+rtl826x_config_aneg() immediately before genphy_c45_an_config_aneg(),
+and drop them from supported in get_features().
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/net/phy/realtek/realtek_main.c | 10 +++++++
+ 1 file changed, 10 insertions(+)
+
+--- a/drivers/net/phy/realtek/realtek_main.c	2026-10-11 13:02:20.983739648 +0200
++++ b/drivers/net/phy/realtek/realtek_main.c	2026-10-11 13:02:21.004340942 +0200
+@@ -3175,6 +3175,10 @@
+ 	linkmode_clear_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+ 			   phydev->supported);
+ 
++	/* See rtl826x_config_aneg() - strip Pause from the PHY feature set. */
++	linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT, phydev->supported);
++	linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, phydev->supported);
++
+ 	return 0;
+ }
+ 
+@@ -3209,6 +3213,14 @@
+ 	if (phydev->autoneg == AUTONEG_DISABLE)
+ 		return genphy_c45_pma_setup_forced(phydev);
+ 
++	/* Phylink/MAC often re-adds Pause into advertising from
++	 * mac_capabilities even after get_features() cleared it. Force it
++	 * off before programming C45 AN so copper pause cannot negotiate
++	 * and stall TX under load (W1700K lan2 / GDM4 USXGMII).
++	 */
++	linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT, phydev->advertising);
++	linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, phydev->advertising);
++
+ 	ret = genphy_c45_an_config_aneg(phydev);
+ 	if (ret < 0)
+ 		return ret;
