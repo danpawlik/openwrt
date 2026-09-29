@@ -1,0 +1,54 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [PATCH] net: pcs: airoha: do not force XFI pause in pcs_post_config
+
+airoha_pcs_post_config() unconditionally sets XFI TX/RX flow control
+after airoha_pcs_config() has already programmed those bits from
+permit_pause_to_mac. That makes XFI pause sticky on the AN7581 Ethernet
+PCS used by GDM4 (W1700K lan2, USXGMII to RTL8261): even experiments
+that clear the bits in pcs_config lose, and the netdev still comes up
+with "flow control rx/tx".
+
+Match the net-next airoha PCS series and leave frag/IPG setup alone in
+pcs_post_config so pcs_config owns the FC enables.
+
+On the AN7581 Ethernet PCS in USXGMII mode, keep XFI MAC pause off even
+when phylink permits it. Pause on this hop stalls GDM4 transmit under
+load and shows up as multi-tens-of-ms loaded latency versus the internal
+GSW path (lan3). airoha_eth does not expose ethtool pause ops, so the PCS
+is the only practical gate. PON PCS / wan are unchanged.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/net/pcs/airoha/pcs-airoha-common.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+--- a/drivers/net/pcs/airoha/pcs-airoha-common.c	2026-09-29 10:01:57.398480211 +0200
++++ b/drivers/net/pcs/airoha/pcs-airoha-common.c	2026-09-29 10:01:57.415938827 +0200
+@@ -696,6 +696,14 @@
+ 				AIROHA_PCS_HSGMII_AN_SGMII_RESET_PHY);
+ 	}
+ 
++	/* XFI pause between eth PCS and the external 10G PHY stalls GDM4 TX
++	 * under load. Keep it off for AN7581 eth USXGMII; copper-side pause
++	 * remains a PHY/link-partner concern.
++	 */
++	if (interface == PHY_INTERFACE_MODE_USXGMII &&
++	    device_is_compatible(priv->dev, "airoha,an7581-pcs-eth"))
++		permit_pause_to_mac = false;
++
+ 	/* Configure Flow Control on XFI */
+ 	regmap_update_bits(maps->pcs_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
+ 			   AIROHA_PCS_XFI_TX_FC_EN | AIROHA_PCS_XFI_RX_FC_EN,
+@@ -959,12 +967,6 @@
+ 			   AIROHA_PCS_XFI_IPG_NUM,
+ 			   FIELD_PREP(AIROHA_PCS_XFI_IPG_NUM, 10));
+ 
+-	/* Enable TX/RX flow control */
+-	regmap_set_bits(maps->pcs_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
+-			AIROHA_PCS_XFI_TX_FC_EN);
+-	regmap_set_bits(maps->pcs_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
+-			AIROHA_PCS_XFI_RX_FC_EN);
+-
+ 	return 0;
+ }
+ 
