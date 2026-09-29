@@ -1,0 +1,37 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [PATCH] net: phy: realtek: disable Pause advertising on RTL826x
+
+RTL826x copper AN defaults to advertising Symmetric Pause (MMD 7.0x0010).
+On hosts such as the Airoha AN7581 GDM4 path (Gemtek W1700K lan2), XFI
+pause toward the PCS was already gated in the PCS driver, but copper
+pause with the link partner still negotiates on and stalls PHY transmit
+under upload load. That shows up as multi-tens-of-ms loaded latency on
+upload while download stays fine. ethtool -A is not implemented on
+airoha_eth, so the partner cannot keep pause forced off across reboot.
+
+Clear Pause / Asym_Pause from phydev->supported in rtl826x_get_features()
+so C45 AN never advertises them. Same 10G PHY IDs already disable EEE in
+probe for related stability reasons.
+
+Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
+---
+ drivers/net/phy/realtek/realtek_main.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+--- a/drivers/net/phy/realtek/realtek_main.c	2026-09-29 12:16:18.612564108 +0200
++++ b/drivers/net/phy/realtek/realtek_main.c	2026-09-29 12:16:18.651521331 +0200
+@@ -2747,6 +2747,14 @@
+ 	linkmode_clear_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+ 			   phydev->supported);
+ 
++	/* Copper pause toward the link partner stalls TX under load on
++	 * USXGMII hosts that cannot drive ethtool pause ops (e.g. Airoha
++	 * GDM4). Keep Pause out of supported/advertising so AN never
++	 * enables it; XFI pause is handled separately in the PCS.
++	 */
++	linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT, phydev->supported);
++	linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, phydev->supported);
++
+ 	return 0;
+ }
+ 
