@@ -53,7 +53,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 @@ -67,6 +67,13 @@ static inline void nf_inet_addr_mask(con
  #endif
  }
- 
+
 +struct nf_br_utils {
 +	bool (*fdb_valid_dst)(const struct net_device *dev,
 +			      const unsigned char *addr, u16 vid);
@@ -62,7 +62,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 +extern const struct nf_br_utils __rcu *nf_br_utils_hook;
 +
  int netfilter_init(void);
- 
+
  struct sk_buff;
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
@@ -89,9 +89,9 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 --- a/net/bridge/Makefile
 +++ b/net/bridge/Makefile
 @@ -14,6 +14,8 @@ bridge-$(CONFIG_SYSFS) += br_sysfs_if.o
- 
+
  bridge-$(subst m,y,$(CONFIG_BRIDGE_NETFILTER)) += br_nf_core.o
- 
+
 +bridge-$(subst m,y,$(CONFIG_NF_FLOW_TABLE)) += br_nf_utils.o
 +
  br_netfilter-y := br_netfilter_hooks.o
@@ -101,14 +101,14 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 +++ b/net/bridge/br.c
 @@ -463,6 +463,7 @@ static int __init br_init(void)
  		goto err_out6;
- 
+
  	brioctl_set(br_ioctl_stub);
 +	br_nf_utils_init();
- 
+
  #if IS_ENABLED(CONFIG_ATM_LANE)
  	br_fdb_test_addr_hook = br_fdb_test_addr;
 @@ -495,6 +496,7 @@ err_out:
- 
+
  static void __exit br_deinit(void)
  {
 +	br_nf_utils_fini();
@@ -161,7 +161,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 @@ -1995,6 +1995,19 @@ struct nf_br_ops {
  };
  extern const struct nf_br_ops __rcu *nf_br_ops;
- 
+
 +#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
 +void br_nf_utils_init(void);
 +void br_nf_utils_fini(void);
@@ -183,7 +183,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 @@ -802,6 +802,9 @@ static struct pernet_operations netfilte
  	.exit = netfilter_net_exit,
  };
- 
+
 +const struct nf_br_utils __rcu *nf_br_utils_hook;
 +EXPORT_SYMBOL_GPL(nf_br_utils_hook);
 +
@@ -213,7 +213,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 @@ -565,6 +569,40 @@ static void nf_flow_table_extend_ct_time
  	nf_ct_put(ct);
  }
- 
+
 +static bool nf_flow_dst_valid(struct nf_flowtable *flow_table,
 +			      struct flow_offload *flow, int dir)
 +{
@@ -252,7 +252,7 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
  				    struct flow_offload *flow, void *data)
  {
 @@ -572,6 +610,8 @@ static void nf_flow_offload_gc_step(stru
- 
+
  	if (nf_flow_has_expired(flow) ||
  	    nf_ct_is_dying(flow->ct) ||
 +	    !nf_flow_dst_valid(flow_table, flow, FLOW_OFFLOAD_DIR_ORIGINAL) ||
@@ -271,17 +271,17 @@ Signed-off-by: Daniel Golle <daniel@makrotopia.org>
 +	   port_vlans:2;
  	enum flow_offload_xmit_type xmit_type;
  };
- 
-@@ -100,7 +103,7 @@ static int nft_dev_path_info(const struc
- 			     unsigned char *ha, struct nf_flowtable *flowtable)
+
+@@ -100,7 +103,7 @@ static void nft_dev_path_info(const stru
+ 			      unsigned char *ha, struct nf_flowtable *flowtable)
  {
  	const struct net_device_path *path;
 -	int i;
 +	int i, n;
- 
+
  	memcpy(info->h_dest, ha, ETH_ALEN);
- 
-@@ -133,6 +136,8 @@ static int nft_dev_path_info(const struc
+
+@@ -134,6 +137,8 @@ static void nft_dev_path_info(const stru
  			info->encap[info->num_encaps].id = path->encap.id;
  			info->encap[info->num_encaps].proto = path->encap.proto;
  			info->num_encaps++;
