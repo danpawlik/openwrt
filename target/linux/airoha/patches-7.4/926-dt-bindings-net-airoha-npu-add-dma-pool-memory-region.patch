@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [PATCH] dt-bindings: net: airoha: npu: add DMA pool memory region
+
+The EN7581 NPU can only address host DRAM at 0x80000000-0xbfffffff;
+higher addresses alias the lower 1 GiB. Allow an optional shared DMA
+pool so coherent buffers shared with the NPU can be kept inside that
+window.
+
+7.3 and 7.4 already describe the WLAN Block Ack region and the
+firmware-name property, so only the extra region is added here.
+--- a/Documentation/devicetree/bindings/net/airoha,en7581-npu.yaml
++++ b/Documentation/devicetree/bindings/net/airoha,en7581-npu.yaml
+@@ -48,6 +48,7 @@
+       - description: NPU wlan offload TX buffers region
+       - description: NPU wlan offload TX packet identifiers region
+       - description: NPU wlan Block Ack buffers region
++      - description: Coherent DMA pool for buffers shared with the NPU
+     minItems: 1
+ 
+   memory-region-names:
+@@ -57,6 +58,7 @@
+       - const: tx-pkt
+       - const: tx-bufid
+       - const: ba
++      - const: dma
+     minItems: 1
+ 
+   firmware-name:
