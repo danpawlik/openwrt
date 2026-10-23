@@ -1,0 +1,64 @@
+From 38bb05e9bc284e939b769aef75ed8efcbb857e05 Mon Sep 17 00:00:00 2001
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Date: Fri, 23 Oct 2026 11:23:21 +1000
+Subject: [PATCH net-next 1/3] dt-bindings: net: airoha: npu: add DMA pool
+ memory region
+
+The EN7581 NPU can only address host DRAM at 0x80000000-0xbfffffff;
+higher addresses alias the lower 1 GiB. Allow an optional shared DMA
+pool, after the firmware region or after the WLAN regions, so coherent
+buffers shared with the NPU can be kept inside that window. The
+firmware region stays first for existing users.
+
+Adapted to the 6.18 binding, which does not yet describe the WLAN
+Block Ack region and firmware-name properties used by the backported
+driver; those are added here as well.
+
+Link: https://lore.kernel.org/r/atCRsquzA1UxSpCc@mediatek.com
+Link: https://github.com/openwrt/openwrt/pull/25928#issuecomment-6356872632
+Assisted-by: Codex Astra
+---
+
+--- a/Documentation/devicetree/bindings/net/airoha,en7581-npu.yaml
++++ b/Documentation/devicetree/bindings/net/airoha,en7581-npu.yaml
+@@ -44,18 +44,36 @@
+     oneOf:
+       - items:
+           - description: NPU firmware binary region
++          - description: Coherent DMA pool for buffers shared with the NPU
++        minItems: 1
+       - items:
+           - description: NPU firmware binary region
+           - description: NPU wlan offload RX buffers region
+           - description: NPU wlan offload TX buffers region
+           - description: NPU wlan offload TX packet identifiers region
++          - description: NPU wlan Block Ack buffers region
++          - description: Coherent DMA pool for buffers shared with the NPU
++        minItems: 4
+ 
+   memory-region-names:
++    oneOf:
++      - items:
++          - const: firmware
++          - const: dma
++        minItems: 1
++      - items:
++          - const: firmware
++          - const: pkt
++          - const: tx-pkt
++          - const: tx-bufid
++          - const: ba
++          - const: dma
++        minItems: 4
++
++  firmware-name:
+     items:
+-      - const: firmware
+-      - const: pkt
+-      - const: tx-pkt
+-      - const: tx-bufid
++      - description: Firmware name of RiscV core
++      - description: Firmware name of Data section
+ 
+ required:
+   - compatible
