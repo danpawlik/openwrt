@@ -26,7 +26,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
  			hook ingress priority 0;
  			devices = { "${join('", "', devices)}" };
  			flags offload;
-@@ -583,14 +584,44 @@
+@@ -583,14 +584,47 @@
  		return false;
  	},
  
@@ -70,7 +70,10 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +		bridge_devs = sort(uniq(bridge_devs));
 +		if (length(bridge_devs) && this.default_option("bridge_flow_offloading_hw") &&
 +		    !nft_try_hw_offload(bridge_devs, 'bridge')) {
-+			this.warn('Hardware bridge offloading unavailable, falling back to software offloading');
++			// The kernel rejects hardware bridge flowtables for now
++			// (pending-6.18/675-15): the probe cannot succeed until
++			// full L2 matching is enforced in hardware.
++			this.warn('Hardware bridge offload not supported yet, using software offloading');
 +			this.state.defaults.bridge_flow_offloading_hw = false;
 +		}
  

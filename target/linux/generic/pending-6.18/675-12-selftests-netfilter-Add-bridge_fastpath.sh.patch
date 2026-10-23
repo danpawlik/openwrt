@@ -39,7 +39,7 @@ Signed-off-by: Bohdan Chubuk <chbgdn@gmail.com>
  	conntrack_icmp_related.sh \
 --- /dev/null
 +++ b/tools/testing/selftests/net/netfilter/bridge_fastpath.sh
-@@ -0,0 +1,1096 @@
+@@ -0,0 +1,1100 @@
 +#!/bin/bash
 +# SPDX-License-Identifier: GPL-2.0
 +#
@@ -634,6 +634,10 @@ Signed-off-by: Bohdan Chubuk <chbgdn@gmail.com>
 +'*unaware bridge,*with 802.1ad vlan encaps,*without fastpath*established*'    # 1
 +'*unaware bridge,*with pppoe encap,*without fastpath*established*'            # 1
 +'*unaware bridge,*with pppoe-in-q encaps,*without fastpath*established*'      # 1
++'*unaware bridge,*with double q vlan encaps,*with *fastpath:*counted*'        # 675-15
++'*unaware bridge,*with 802.1ad vlan encaps,*with *fastpath:*counted*'         # 675-15
++'*unaware bridge,*with pppoe encap,*with *fastpath:*counted*'                 # 675-15
++'*unaware bridge,*with pppoe-in-q encaps,*with *fastpath:*counted*'           # 675-15
 +'*forward,*without vlan-device, without vlan encap,*with *fastpath:*counted*' # 2
 +'*forward,*without vlan-device, with vlan encap,*with *fastpath:*tcp broken*' # 3
 +'*forward,*with vlan-device, without vlan encap,*with *fastpath:*counted*'    # 4
