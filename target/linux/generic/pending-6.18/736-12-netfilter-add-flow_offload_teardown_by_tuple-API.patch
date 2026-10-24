@@ -24,7 +24,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 @@ -303,4 +303,5 @@ void flow_offload_teardown(struct flow_offload *flow);
  void flow_offload_teardown(struct flow_offload *flow);
 +void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple);
- 
+
  void nf_flow_snat_port(const struct flow_offload *flow,
  		       struct sk_buff *skb, unsigned int thoff,
  		       u8 protocol, enum flow_offload_tuple_dir dir);
@@ -33,7 +33,7 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +++ b/net/netfilter/nf_flow_table_core.c
 @@ -390,3 +390,29 @@ void flow_offload_teardown(struct flow_offload *flow)
  EXPORT_SYMBOL_GPL(flow_offload_teardown);
- 
+
 +void flow_offload_teardown_by_tuple(struct flow_offload_tuple *tuple)
 +{
 +	struct net_device *netdev;
@@ -64,12 +64,12 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 @@ -747,7 +773,7 @@ int nf_flow_table_init(struct nf_flowtable *flowtable)
  	queue_delayed_work(system_power_efficient_wq,
  			   &flowtable->gc_work, HZ);
- 
+
  	mutex_lock(&flowtable_lock);
 -	list_add(&flowtable->list, &flowtables);
 +	list_add_rcu(&flowtable->list, &flowtables);
  	mutex_unlock(&flowtable_lock);
- 
+
  	return 0;
 @@ -790,7 +816,8 @@ void nf_flow_table_free(struct nf_flowtable *flow_table)
  {
@@ -78,5 +78,5 @@ Signed-off-by: Daniel Pawlik <pawlik.dan@gmail.com>
 +	list_del_rcu(&flow_table->list);
  	mutex_unlock(&flowtable_lock);
 +	synchronize_rcu();
- 
+
  	cancel_delayed_work_sync(&flow_table->gc_work);
