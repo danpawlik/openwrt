@@ -37,18 +37,18 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
 +++ b/Documentation/networking/dsa/dsa.rst
 @@ -70,7 +70,8 @@ Switch tagging protocols
  ------------------------
- 
+
  DSA supports many vendor-specific tagging protocols, one software-defined
 -tagging protocol, and a tag-less mode as well (``DSA_TAG_PROTO_NONE``).
 +tagging protocol, a tag-less mode as well (``DSA_TAG_PROTO_NONE``) and an
 +out-of-band tagging protocol (``DSA_TAG_PROTO_OOB``).
- 
+
  The exact format of the tag protocol is vendor specific, but in general, they
  all contain something which:
 @@ -221,6 +222,16 @@ receive all frames regardless of the val
  setting the ``promisc_on_conduit`` property of the ``struct dsa_device_ops``.
  Note that this assumes a DSA-unaware conduit driver, which is the norm.
- 
+
 +Some SoCs have a tight integration between the conduit network interface and the
 +embedded switch, such that the DSA tag isn't transmitted in the packet data,
 +but through another media, using so-called out-of-band tagging. In that case,
@@ -61,7 +61,7 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
 +
  Conduit network devices
  -----------------------
- 
+
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -21166,6 +21166,7 @@ L:	netdev@vger.kernel.org
@@ -69,7 +69,7 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
  F:	Documentation/devicetree/bindings/net/qcom,ipq4019-ess-edma.yaml
  F:	drivers/net/ethernet/qualcomm/ipqess/
 +F:	net/dsa/tag_oob.c
- 
+
  QUALCOMM ETHQOS ETHERNET DRIVER
  M:	Vinod Koul <vkoul@kernel.org>
 --- /dev/null
@@ -93,7 +93,7 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
 +#endif
 --- a/include/linux/skbuff.h
 +++ b/include/linux/skbuff.h
-@@ -4935,6 +4935,9 @@ enum skb_ext_id {
+@@ -4937,6 +4937,9 @@ enum skb_ext_id {
  #if IS_ENABLED(CONFIG_INET_PSP)
  	SKB_EXT_PSP,
  #endif
@@ -102,7 +102,7 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
 +#endif
  	SKB_EXT_NUM, /* must be last */
  };
- 
+
 --- a/include/net/dsa.h
 +++ b/include/net/dsa.h
 @@ -57,6 +57,7 @@ struct tc_action;
@@ -110,7 +110,7 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
  #define DSA_TAG_PROTO_MXL862_VALUE		30
  #define DSA_TAG_PROTO_MXL862_8021Q_VALUE	31
 +#define DSA_TAG_PROTO_OOB_VALUE			32
- 
+
  enum dsa_tag_protocol {
  	DSA_TAG_PROTO_NONE		= DSA_TAG_PROTO_NONE_VALUE,
 @@ -91,6 +92,7 @@ enum dsa_tag_protocol {
@@ -119,7 +119,7 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
  	DSA_TAG_PROTO_MXL862_8021Q	= DSA_TAG_PROTO_MXL862_8021Q_VALUE,
 +	DSA_TAG_PROTO_OOB		= DSA_TAG_PROTO_OOB_VALUE,
  };
- 
+
  struct dsa_switch;
 --- a/net/core/skbuff.c
 +++ b/net/core/skbuff.c
@@ -130,13 +130,13 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
 +#ifdef CONFIG_NET_DSA_TAG_OOB
 +#include <linux/dsa/oob.h>
 +#endif
- 
+
  #include <net/protocol.h>
 +#include <net/dsa.h>
  #include <net/dst.h>
  #include <net/sock.h>
  #include <net/checksum.h>
-@@ -5120,6 +5124,9 @@ static const u8 skb_ext_type_len[] = {
+@@ -5124,6 +5128,9 @@ static const u8 skb_ext_type_len[] = {
  #if IS_ENABLED(CONFIG_INET_PSP)
  	[SKB_EXT_PSP] = SKB_EXT_CHUNKSIZEOF(struct psp_skb_ext),
  #endif
@@ -144,14 +144,14 @@ Signed-off-by: Maxime Chevallier <maxime.chevallier@bootlin.com>
 +	[SKB_EXT_DSA_OOB] = SKB_EXT_CHUNKSIZEOF(struct dsa_oob_tag_info),
 +#endif
  };
- 
+
  static __always_inline unsigned int skb_ext_total_length(void)
 --- a/net/dsa/Kconfig
 +++ b/net/dsa/Kconfig
 @@ -145,6 +145,15 @@ config NET_DSA_TAG_OCELOT_8021Q
  	  this mode, less TCAM resources (VCAP IS1, IS2, ES0) are available for
  	  use with tc-flower.
- 
+
 +config NET_DSA_TAG_OOB
 +	select SKB_EXTENSIONS
 +	tristate "Tag driver for Out-of-band tagging drivers"
