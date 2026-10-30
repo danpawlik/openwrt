@@ -65,8 +65,8 @@ Signed-off-by: Bernhard Frauendienst <kernel@nospam.obeliks.de>
 +menu "Composite MTD device drivers"
 +	depends on MTD!=n
 +
-+config MTD_VIRT_CONCAT
-+	tristate "Virtual concat MTD device"
++config MTD_VIRT_CONCAT_OF
++	tristate "Virtual concat (device tree) MTD device"
 +	help
 +	  This driver allows creation of a virtual MTD concat device, which
 +	  concatenates multiple underlying MTD devices to a single device.
@@ -82,7 +82,7 @@ Signed-off-by: Bernhard Frauendienst <kernel@nospam.obeliks.de>
 +# linux/drivers/mtd/composite/Makefile
 +#
 +
-+obj-$(CONFIG_MTD_VIRT_CONCAT)   += virt_concat.o
++obj-$(CONFIG_MTD_VIRT_CONCAT_OF)   += virt_concat.o
 --- /dev/null
 +++ b/drivers/mtd/composite/virt_concat.c
 @@ -0,0 +1,127 @@
@@ -97,8 +97,8 @@ Signed-off-by: Bernhard Frauendienst <kernel@nospam.obeliks.de>
 +#include <linux/platform_device.h>
 +#include <linux/module.h>
 +#include <linux/device.h>
-+#include <linux/mtd/concat.h>
 +#include <linux/mtd/mtd.h>
++#include <linux/mtd/concat.h>
 +#include <linux/mtd/partitions.h>
 +#include <linux/of.h>
 +#include <linux/mod_devicetable.h>
