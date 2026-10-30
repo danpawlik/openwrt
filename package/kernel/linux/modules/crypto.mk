@@ -328,10 +328,10 @@ define KernelPackage/crypto-ghash
   TITLE:=GHASH digest CryptoAPI module
   DEPENDS:=+kmod-crypto-gf128 +kmod-crypto-hash
   KCONFIG:= \
-	CONFIG_CRYPTO_GHASH \
+	CONFIG_CRYPTO_GHASH@lt7.3 \
 	CONFIG_CRYPTO_GHASH_ARM_CE
-  FILES:=$(LINUX_DIR)/crypto/ghash-generic.ko
-  AUTOLOAD:=$(call AutoLoad,09,ghash-generic)
+  FILES:=$(LINUX_DIR)/crypto/ghash-generic.ko@lt7.3
+  AUTOLOAD:=$(call AutoLoad,09,ghash-generic@lt7.3)
   $(call AddDepends/crypto)
 endef
 
