@@ -109,12 +109,10 @@ v2:
  	if (state)
  		set_bit(bit, &mode);
  	else
-@@ -399,20 +411,26 @@ static ssize_t netdev_led_attr_store(str
- 	     test_bit(TRIGGER_NETDEV_LINK_1000, &mode) ||
- 	     test_bit(TRIGGER_NETDEV_LINK_2500, &mode) ||
- 	     test_bit(TRIGGER_NETDEV_LINK_5000, &mode) ||
--	     test_bit(TRIGGER_NETDEV_LINK_10000, &mode)))
-+	     test_bit(TRIGGER_NETDEV_LINK_10000, &mode))) {
+@@ -446,17 +458,23 @@ static ssize_t netdev_led_attr_store(str
+ 	     test_bit(TRIGGER_NETDEV_LINK_50000, &mode) ||
+-	     test_bit(TRIGGER_NETDEV_LINK_100000, &mode)))
++	     test_bit(TRIGGER_NETDEV_LINK_100000, &mode))) {
 +		mutex_unlock(&trigger_data->lock);
  		return -EINVAL;
 +	}
@@ -138,7 +136,7 @@ v2:
 +
  	return size;
  }
- 
+
 @@ -460,9 +478,6 @@ static ssize_t interval_store(struct dev
  	unsigned long value;
  	int ret;
