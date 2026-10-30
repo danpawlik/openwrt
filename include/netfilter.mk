@@ -20,7 +20,7 @@ define nf_add
  $(if $(4),ifeq ($$(strip $$(call CompareKernelPatchVer,$$(KERNEL_PATCHVER),$(firstword $(4)),$(lastword $(4)))),1))
   $(1)-$$($(2)) += $(3)
  $(if $(4),endif)
- KCONFIG_$(1) = $(filter-out $(2),$(KCONFIG_$(1))) $(2)
+ KCONFIG_$(1) = $(filter-out $(2),$(KCONFIG_$(1))) $(2)$(if $(4),@$(word 1,$(4))$(word 2,$(4)))
 endef
 
 
@@ -237,8 +237,10 @@ $(eval $(call nf_add,IPT_CHECKSUM,CONFIG_NETFILTER_XT_TARGET_CHECKSUM, $(P_XT)xt
 
 
 # netlink
+# NETFILTER_NETLINK is a bool since 7.3 and nfnetlink.o is linked into
+# netfilter.o, so there is no nfnetlink.ko module to package anymore
 
-$(eval $(call nf_add,NFNETLINK,CONFIG_NETFILTER_NETLINK, $(P_XT)nfnetlink))
+$(eval $(call nf_add,NFNETLINK,CONFIG_NETFILTER_NETLINK, $(P_XT)nfnetlink, lt 7.3))
 
 # nflog
 
