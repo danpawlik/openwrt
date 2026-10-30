@@ -69,7 +69,7 @@ v2:
  
  	return size;
  }
-@@ -510,18 +513,19 @@ static umode_t netdev_trig_link_speed_vi
+@@ -547,22 +547,23 @@ static umode_t netdev_trig_link_speed_vi
  	 * Stop at the first matching entry as we care only to check if a particular
  	 * speed is supported and not the kind.
  	 */
@@ -84,6 +84,10 @@ v2:
 -		CHECK_LINK_MODE_ATTR(2500);
 -		CHECK_LINK_MODE_ATTR(5000);
 -		CHECK_LINK_MODE_ATTR(10000);
+-		CHECK_LINK_MODE_ATTR(25000);
+-		CHECK_LINK_MODE_ATTR(40000);
+-		CHECK_LINK_MODE_ATTR(50000);
+-		CHECK_LINK_MODE_ATTR(100000);
 -	}
 +	scoped_guard(mutex, &trigger_data->lock)
 +		for_each_set_bit(mode, supported_link_modes, __ETHTOOL_LINK_MODE_MASK_NBITS) {
@@ -97,8 +101,12 @@ v2:
 +			CHECK_LINK_MODE_ATTR(2500);
 +			CHECK_LINK_MODE_ATTR(5000);
 +			CHECK_LINK_MODE_ATTR(10000);
++			CHECK_LINK_MODE_ATTR(25000);
++			CHECK_LINK_MODE_ATTR(40000);
++			CHECK_LINK_MODE_ATTR(50000);
++			CHECK_LINK_MODE_ATTR(100000);
 +		}
- 
+
  	return 0;
  }
 @@ -561,7 +565,6 @@ static const struct attribute_group netd
