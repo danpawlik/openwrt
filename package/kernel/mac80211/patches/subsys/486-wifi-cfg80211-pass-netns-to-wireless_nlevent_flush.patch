@@ -1,0 +1,21 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [PATCH] wifi: cfg80211: pass the netns to wireless_nlevent_flush()
+
+Linux 7.4 made wireless_nlevent_flush() take the net namespace, which
+is what mainline cfg80211 passes since then. Keep the argument-less
+call for older kernels the backports still build against.
+
+--- a/net/wireless/core.c
++++ b/net/wireless/core.c
+@@ -1864,7 +1864,11 @@ static int cfg80211_netdev_notifier_call
+ 		return NOTIFY_DONE;
+ 	}
+ 
++#if LINUX_VERSION_IS_GEQ(7,4,0)
++	wireless_nlevent_flush(dev_net(dev));
++#else
+ 	wireless_nlevent_flush();
++#endif
+ 
+ 	return NOTIFY_OK;
+ }
