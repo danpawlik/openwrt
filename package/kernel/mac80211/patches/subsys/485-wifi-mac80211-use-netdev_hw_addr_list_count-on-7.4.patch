@@ -1,0 +1,21 @@
+From: Daniel Pawlik <pawlik.dan@gmail.com>
+Subject: [PATCH] wifi: mac80211: use netdev_hw_addr_list_count() on Linux 7.4
+
+Linux 7.4 made the count member of struct netdev_hw_addr_list private
+(renamed to _count) and introduced the netdev_hw_addr_list_count()
+accessor, which is what mainline mac80211 uses since then. Keep the
+direct member access for older kernels the backports still build
+against.
+
+--- a/net/mac80211/driver-ops.h
++++ b/net/mac80211/driver-ops.h
+@@ -188,5 +188,9 @@
+ 	u64 ret = 0;
+ 
++#if LINUX_VERSION_IS_GEQ(7,4,0)
++	trace_drv_prepare_multicast(local, netdev_hw_addr_list_count(mc_list));
++#else
+ 	trace_drv_prepare_multicast(local, mc_list->count);
++#endif
+ 
+ 	if (local->ops->prepare_multicast)
